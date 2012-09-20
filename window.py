@@ -5,6 +5,7 @@ import random
 import time
 import itertools
 import operator
+import argparse
 
 def main():
     curses.wrapper(main2)
@@ -34,7 +35,7 @@ def main2(stdscr):
                 else:
                     scene.input(stdscr, c)
 
-            time.sleep(0.01)
+            time.sleep(0.02)
 
         except NewScene as ns:
             scene = ns[0]
@@ -304,6 +305,9 @@ def neighbourhood(coord,n=1):
             coords.append((i,j))
     return coords
 
+def server_main():
+    pass
+
 # Constants
 UP = "up"
 NORTHEAST = "ne"
@@ -327,6 +331,7 @@ DIFFS = {
 
 CMD_MOVE = "move"
 CMD_LOOK = "look"
+CMD_FIRE = "fire"
 
 OBJ_WALL = "wall"
 OBJ_PLAYER = "player"

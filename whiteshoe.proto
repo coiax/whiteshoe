@@ -1,0 +1,52 @@
+message Packet {
+    // to catch duplicates
+    required int32 packet_id = 1;
+    repeated int32 payload_type = 2 [packed=true];
+    // payload type can be any of the following
+    // and a packet can contain multiple payloads, although not all of them
+    // make sense
+    // 0 - c->s initial greeting
+
+    // 1 - s->c games running
+    message Game {
+        required int32 game_id = 1;
+        optional string name = 2;
+        optional int32 max_players = 3;
+        optional int32 current_players = 4;
+    }
+    repeated Game games = 100;
+
+    // 2 - c->s join/new game
+    // game_id is -1 if I want to start a new game
+    optional sint32 game_id = 200;
+
+    // New game creation options
+    optional int32 max_players = 201;
+    optional string map_generator = 202;
+
+    // 3 - c<->s error
+    optional int32 error_type = 300;
+    optional string error_message = 301;
+
+    // 4 reserved
+    // 5 reserved
+
+    // 6 - vision update
+
+    repeated sint32 objects = 600 [packed=true];
+    // objects consists of 4-tuples: x,y,obj_type,attr_id
+    // attr_id is either -1 for no attributes, or an index of an attribute
+    message Attribute {
+        optional int32 number = 1;
+        optional int32 direction = 2;
+        optional int32 colour = 3;
+        optional int32 hp_max = 4;
+        optional int32 hp = 5;
+        optional int32 max_ammo = 6;
+        optional int32 ammo = 7;
+    }
+    repeated Attribute attributes = 601;
+
+    // 7 - keep alive
+    optional sint64 timestamp = 700;
+}

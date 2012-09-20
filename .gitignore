@@ -69,4 +69,4 @@ nosetests.xml
 .mr.developer.cfg
 
 
-
+*_pb2.py
