@@ -6,6 +6,12 @@ import time
 import itertools
 import operator
 import argparse
+import socket
+import select
+import sys
+import traceback
+
+import packet_pb2
 
 def main():
     curses.wrapper(main2)
@@ -306,7 +312,159 @@ def neighbourhood(coord,n=1):
     return coords
 
 def server_main():
-    pass
+    s = Server()
+    s.serve()
+
+class Server(object):
+
+    def __init__(self):
+        self.handlers = {
+            0: self._initial_greeting,
+            # 1 games running (s->c)
+            2: self._join_or_new_game,
+            3: self._error,
+            4: self._game_action,
+            # 5 reserved
+            # 6 vision update (s->c)
+            7: self._keep_alive,
+
+        }
+        self.port = 25008
+        self.games = []
+
+        self.seen_ids = []
+        self.id_counters = {}
+
+        self.clients = {}
+
+        self.socket = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+
+    def get_id(self,family='packet'):
+        if family not in self.id_counters:
+            self.id_counters[family] = 0
+        new_id = self.id_counters[family]
+        self.id_counters[family] = (new_id + 1) % 2**16
+        return new_id
+
+    def serve(self):
+        self.socket.bind(('',self.port))
+
+        while True:
+            for game in self.games:
+                game.tick()
+
+            rlist, wlist, xlist = select.select([self.socket],[],[],0.1)
+            for rs in rlist:
+                data, addr = rs.recvfrom(4096)
+
+                try:
+                    packet = packet_pb2.Packet.FromString(data)
+
+                    # disabled while we're debugging
+                    #if (addr,packet.packet_id) in self.seen_ids:
+                        # Ignore duplicates
+                        #    continue
+
+                    self.seen_ids.append((addr,packet.packet_id))
+
+                    while len(self.seen_ids) > 200:
+                        del self.seen_ids[0]
+
+                    for payload_type in packet.payload_types:
+                        self.handlers[payload_type](packet, addr)
+
+                    if addr not in self.clients:
+                        self.clients[addr] = {
+                            'player_id': self.get_id('player')
+                        }
+
+                    self.clients[addr]['last heard from'] = time.time()
+
+
+                except Exception as e:
+                    traceback.print_exc()
+
+    def _initial_greeting(self, packet, addr):
+        reply = packet_pb2.Packet()
+        reply.payload_types.append(self.GAMES_RUNNING)
+
+        reply.packet_id = self.get_id()
+
+        for game in self.games:
+            game_message = reply.games.add()
+
+            game_message.game_id = game.id
+            game_message.name = game.name
+            game_message.mode = game.mode
+            game_message.max_players = game.max_players
+            game_message.current_players = game.current_players
+
+        data = reply.SerializeToString()
+        self.socket.sendto(data, addr)
+
+    def _join_or_new_game(self, packet, addr):
+        if packet.game_id == -1:
+            # creating new game
+            max_players = packet.max_players or 20
+            map_generator = packet.map_generator or "maze"
+            game_name = packet.new_game_name or "Unnamed"
+            game_mode = packet.new_game_mode or "ffa"
+            game_id = self.get_id('game')
+
+            g = Game(max_players,map_generator,game_name,game_mode,game_id)
+            self.games.append(g)
+
+        else:
+            # joining existing game
+            game_id = packet.game_id
+            assert game_id in [g.id for g in self.games]
+            g.player_join(self.clients[addr]['player_id'])
+
+    def _error(self, packet, addr):
+        # Handle silently.
+        pass
+
+    def _game_action(self, packet, addr):
+        player_id = self.clients[addr]['player_id']
+        game_id = packet.action_game_id
+
+        game = [g for g in self.games if g.id == game_id][0]
+
+        assert game.is_player_in_game(player_id)
+
+    def _keep_alive(self, packet, addr):
+        pass
+
+    GAMES_RUNNING = 1
+
+class Game(object):
+    def __init__(self,max_players,map_generator,name,mode,id):
+        self.max_players = max_players
+        self.map_generator = map_generator
+        self.name = name
+        self.mode = mode
+        self.id = id
+
+        self.players = []
+
+    @property
+    def current_players(self):
+        return 0
+
+    def is_player_in_game(self,player_id):
+        return player_id in self.players
+
+    def player_join(self,player_id):
+        assert player_id not in self.players
+        self.players.append(player_id)
+
+    def player_action(self, action, argument):
+        pass
+
+    def tick(self):
+        # Do anything that occurs independently of network input
+        pass
+
 
 # Constants
 UP = "up"
@@ -344,4 +502,10 @@ class CloseProgram(Exception):
     pass
 
 if __name__=='__main__':
-    main()
+    p = argparse.ArgumentParser()
+    p.add_argument('-s','--server',action='store_true')
+    args = p.parse_args()
+    if args.server:
+        server_main()
+    else:
+        main()

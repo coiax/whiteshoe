@@ -1,18 +1,19 @@
 message Packet {
     // to catch duplicates
-    required int32 packet_id = 1;
-    repeated int32 payload_type = 2 [packed=true];
+    required fixed32 packet_id = 1;
+    repeated int32 payload_types = 2 [packed=true];
     // payload type can be any of the following
     // and a packet can contain multiple payloads, although not all of them
-    // make sense
+    // make sense together
     // 0 - c->s initial greeting
 
     // 1 - s->c games running
     message Game {
         required int32 game_id = 1;
         optional string name = 2;
-        optional int32 max_players = 3;
-        optional int32 current_players = 4;
+        optional string mode = 3;
+        optional int32 max_players = 4;
+        optional int32 current_players = 5;
     }
     repeated Game games = 100;
 
@@ -23,12 +24,17 @@ message Packet {
     // New game creation options
     optional int32 max_players = 201;
     optional string map_generator = 202;
+    optional string new_game_name = 203;
+    optional string new_game_mode = 204;
 
     // 3 - c<->s error
     optional int32 error_type = 300;
     optional string error_message = 301;
 
-    // 4 reserved
+    // 4 c->s game action
+    optional int32 action_game_id = 400;
+    optional int32 action = 401;
+    optional int32 argument = 402;
     // 5 reserved
 
     // 6 - vision update
