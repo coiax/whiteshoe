@@ -26,6 +26,7 @@ message Packet {
     optional string map_generator = 202;
     optional string new_game_name = 203;
     optional string new_game_mode = 204;
+    optional bool join_new_game = 205;
 
     // 3 - c<->s error
     optional int32 error_type = 300;
@@ -45,7 +46,7 @@ message Packet {
     message Attribute {
         optional int32 number = 1;
         optional int32 direction = 2;
-        optional int32 colour = 3;
+        optional int32 team = 3;
         optional int32 hp_max = 4;
         optional int32 hp = 5;
         optional int32 max_ammo = 6;
