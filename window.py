@@ -14,7 +14,12 @@ import collections
 
 import packet_pb2
 
-def main():
+# mainmethods
+def server_main():
+    s = Server()
+    s.serve()
+
+def client_main():
     curses.wrapper(main2)
 
 def main2(stdscr):
@@ -29,7 +34,6 @@ def main2(stdscr):
         stdscr.refresh()
 
     data = {}
-    data['network'] = FakeNetwork()
     data['network'] = ClientNetwork(autojoin=('::1',None),automake=True)
 
     scene = GameScene(data)
@@ -55,38 +59,6 @@ def main2(stdscr):
         except KeyboardInterrupt:
             break
 
-def display_character(object, history=False):
-    display_chr = None
-    # Default colour
-    colour = curses.color_pair(0)
-
-    obj, attr = object
-
-    display_chr = {
-        Constants.OBJ_WALL: '#',
-        Constants.OBJ_PLAYER: '@',
-        Constants.OBJ_EMPTY: '.'}[obj]
-
-    if obj == Constants.OBJ_PLAYER:
-        colour = curses.color_pair(1)
-        direction = attr['direction']
-
-        if direction == Constants.RIGHT:
-            display_chr = '>'
-        elif direction == Constants.LEFT:
-            display_chr = '<'
-        elif direction == Constants.UP:
-            display_chr = '^'
-        elif direction == Constants.DOWN:
-            display_chr = 'v'
-
-    assert display_chr is not None
-
-    if history:
-        # Grey
-        colour = curses.color_pair(3)
-
-    return display_chr, colour
 
 
 class GameScene(object):
@@ -101,10 +73,12 @@ class GameScene(object):
         # corner, and we want to be able to move around
         stdscr.clear()
 
+        my_coord = self.network.find_me()
+
         for coord, objects in history.items():
             x,y = coord
             for o in objects:
-                display_chr, colour = display_character(o,history=True)
+                display_chr, colour = self.display_character(o,history=True)
             try:
                 stdscr.addstr(y,x,display_chr, colour)
             except curses.error:
@@ -113,16 +87,52 @@ class GameScene(object):
         for coord, objects in visible.items():
             x,y = coord
             for o in objects:
-                display_chr, colour = display_character(o)
+                display_chr, colour = self.display_character(o)
             try:
                 stdscr.addstr(y,x,display_chr, colour)
             except curses.error:
                 pass
 
-        x,y = self.network.find_me()
+        x,y = my_coord
         stdscr.move(y,x)
 
         stdscr.refresh()
+
+    def display_character(self, object, history=False):
+        display_chr = None
+        # Default colour
+        colour = curses.color_pair(0)
+
+        obj, attr = object
+
+        display_chr = {
+            Constants.OBJ_WALL: '#',
+            Constants.OBJ_PLAYER: '@',
+            Constants.OBJ_EMPTY: '.'}[obj]
+
+        if obj == Constants.OBJ_PLAYER:
+            direction = attr['direction']
+            if attr['number'] == self.network.player_id:
+                colour = curses.color_pair(1)
+            else:
+                colour = curses.color_pair(2)
+
+            if direction == Constants.RIGHT:
+                display_chr = '>'
+            elif direction == Constants.LEFT:
+                display_chr = '<'
+            elif direction == Constants.UP:
+                display_chr = '^'
+            elif direction == Constants.DOWN:
+                display_chr = 'v'
+
+        assert display_chr is not None
+
+        if history:
+            # Grey
+            colour = curses.color_pair(3)
+
+        return display_chr, colour
 
     def input(self, stdscr, c):
         #print(c)
@@ -474,9 +484,6 @@ def neighbourhood(coord,n=1):
             coords.append((i,j))
     return coords
 
-def server_main():
-    s = Server()
-    s.serve()
 
 def get_id(family='packet',_id_counters={}):
     if family not in _id_counters:
@@ -504,7 +511,7 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        g = Game(20,"purerandom","Default","ffa",get_id('game'))
+        g = Game()
         self.games.append(g)
 
         self.seen_ids = []
@@ -585,10 +592,10 @@ class Server(object):
 
     def _make_new_game(self, packet, addr):
         # creating new game
-        max_players = packet.max_players or 20
-        map_generator = packet.map_generator or "purerandom"
-        game_name = packet.new_game_name or "Unnamed"
-        game_mode = packet.new_game_mode or "ffa"
+        max_players = packet.max_players or None
+        map_generator = packet.map_generator or None
+        game_name = packet.new_game_name or None
+        game_mode = packet.new_game_mode or none
         game_id = get_id('game')
 
         g = Game(max_players,map_generator,game_name,game_mode,game_id)
@@ -674,21 +681,26 @@ class Game(object):
         'purerandom': purerandom_map,
         'empty': empty_map,
     }
-    def __init__(self,max_players,map_generator,name,mode,id):
+    def __init__(self,max_players=20,map_generator='purerandom',
+                 name='Untitled',mode='ffa',id=None):
+
         self.max_players = max_players
         self.world = self.MAP_GENERATORS[map_generator]()
         self.name = name
         self.mode = mode
+
+        if id is None:
+            id = get_id('game')
+
         self.id = id
 
         self.vision = vision_basic
 
         self.players = []
-        self._player_coords = {}
 
     @property
     def current_players(self):
-        return 0
+        return len(self.players)
 
     def is_player_in_game(self,player_id):
         return player_id in self.players
@@ -810,19 +822,25 @@ class Game(object):
 
         old_location = location
         new_location = (location[0] + diff[0], location[1] + diff[1])
-        moved = False
+        can_move = True
 
-        if new_location in self.world:
-            # If the area is empty
-            if Constants.OBJ_EMPTY in [oa[0] for oa in self.world[new_location]]:
-                self.world[new_location].append(player)
-                moved = True
+        if new_location not in self.world:
+            can_move = False
+        else:
+            for obj,attr in self.world[new_location]:
+                # If the area is empty
+                if obj in Constants.SOLID_OBJECTS:
+                    can_move = False
+                    break
 
-        if not moved:
+
+
+        if not can_move:
             # Player can't move to that location, no move
             self.world[location].append(player)
             return []
         else:
+            self.world[new_location].append(player)
             player_id = player[1]['number']
             dirty_packets = self._mark_dirty([old_location,new_location])
 
@@ -906,6 +924,7 @@ class Constants:
     OBJ_EMPTY = "empty"
 
     HISTORICAL_OBJECTS = (OBJ_WALL, OBJ_EMPTY)
+    SOLID_OBJECTS = (OBJ_WALL, OBJ_PLAYER)
     @classmethod
     def to_numerical_constant(cls,constant):
         constants = list(vars(cls).values())
@@ -931,4 +950,4 @@ if __name__=='__main__':
     if args.server:
         server_main()
     else:
-        main()
+        client_main()
