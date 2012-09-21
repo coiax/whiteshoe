@@ -10,6 +10,7 @@ import socket
 import select
 import sys
 import traceback
+import collections
 
 import packet_pb2
 
@@ -184,6 +185,7 @@ class ClientNetwork(object):
             self._send_packets([p], self._server_addr)
 
         self.game_id = None
+        self.player_id = None
 
 
     def update(self):
@@ -225,11 +227,32 @@ class ClientNetwork(object):
         self._send_packets([p],self._server_addr)
 
     def find_me(self):
+        if self.player_id is not None:
+            for coord, objects in self.known_world.items():
+                for object in objects:
+                    if (object[0] == Constants.OBJ_PLAYER and
+                        object[1]['number'] == self.player_id):
+
+                        return coord
+
+        # Failsafe
         return (0,0)
 
     def get_visible(self):
-        visible = self.known_world
-        history = {}
+        player_location = self.find_me()
+        can_see = vision_basic(self.known_world, player_location)
+
+        visible = {}
+        history = collections.defaultdict(list)
+
+        for coord, objects in self.known_world.items():
+            if coord in can_see:
+                visible[coord] = objects
+            else:
+                for obj in objects:
+                    if obj[0] in Constants.HISTORICAL_OBJECTS:
+                        history[coord].append(obj)
+
         return visible, history
 
     # packet handlers
@@ -270,6 +293,8 @@ class ClientNetwork(object):
 
             unpacked_attributes.append(unpacked)
 
+        cleared = set()
+
         for x,y,obj_type,attr_id in grouper(4, packet.objects):
             assert None not in (x,y,obj_type,attr_id)
             obj_type = Constants.from_numerical_constant(obj_type)
@@ -278,8 +303,9 @@ class ClientNetwork(object):
             else:
                 attr = unpacked_attributes[attr_id].copy()
 
-            if (x,y) not in self.known_world:
+            if (x,y) not in cleared:
                 self.known_world[x,y] = []
+                cleared.add((x,y))
 
             self.known_world[x,y].append((obj_type, attr))
 
@@ -289,6 +315,7 @@ class ClientNetwork(object):
     def _game_status(self, packet, addr):
         if packet.status == Constants.STATUS_JOINED:
             self.game_id = packet.status_game_id
+            self.player_id = packet.your_player_id
         elif packet.status == Constants.STATUS_LEFT:
             self.game_id = None
 
@@ -477,7 +504,7 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        g = Game(20,"empty","Default","ffa",get_id('game'))
+        g = Game(20,"purerandom","Default","ffa",get_id('game'))
         self.games.append(g)
 
         self.seen_ids = []
@@ -619,6 +646,8 @@ def empty_map(X=80,Y=24,seed=None):
         world[i,j] = [(Constants.OBJ_EMPTY, {})]
     return world
 
+def vision_basic(world, coord):
+    return neighbourhood(coord,n=3)
 
 def network_pack_object(coord, object):
     x,y = coord
@@ -651,6 +680,8 @@ class Game(object):
         self.name = name
         self.mode = mode
         self.id = id
+
+        self.vision = vision_basic
 
         self.players = []
         self._player_coords = {}
@@ -685,13 +716,14 @@ class Game(object):
         join_packet.payload_types.append(Constants.GAME_STATUS)
         join_packet.status_game_id = self.id
         join_packet.status = Constants.STATUS_JOINED
+        join_packet.your_player_id = player_id
 
         locations = self._determine_can_see(spawn_coord)
 
         return [(player_id, join_packet)] + self._send_player_vision(player_id, locations)
 
     def _determine_can_see(self, coord):
-        return neighbourhood(coord,n=3)
+        return self.vision(self.world, coord)
 
     def _send_player_vision(self,player_id, locations):
         location, player = self._find_player(player_id)
@@ -872,6 +904,8 @@ class Constants:
     OBJ_WALL = "wall"
     OBJ_PLAYER = "player"
     OBJ_EMPTY = "empty"
+
+    HISTORICAL_OBJECTS = (OBJ_WALL, OBJ_EMPTY)
     @classmethod
     def to_numerical_constant(cls,constant):
         constants = list(vars(cls).values())
