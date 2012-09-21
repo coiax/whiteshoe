@@ -67,7 +67,7 @@ def display_character(object, history=False):
         Constants.OBJ_EMPTY: '.'}[obj]
 
     if obj == Constants.OBJ_PLAYER:
-        colour = curses.color_pair(attr['colour'])
+        colour = curses.color_pair(1)
         direction = attr['direction']
 
         if direction == Constants.RIGHT:
@@ -159,14 +159,16 @@ class GameScene(object):
 class ClientNetwork(object):
     def __init__(self,autojoin=None,automake=False):
         self.handlers = {
-            # 0 initial greeting
-            1: self._games_running,
-            3: self._error,
-            6: self._vision_update,
-            7: self._keep_alive,
+            # c->s get games list
+            Constants.GAMES_RUNNING: self._games_running,
+            Constants.ERROR: self._error,
+            Constants.VISION_UPDATE: self._vision_update,
+            Constants.KEEP_ALIVE: self._keep_alive,
+            Constants.GAME_STATUS: self._game_status,
         }
 
         self.socket = socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
+        self.known_world = {}
 
         if autojoin is not None:
             ip,port = autojoin
@@ -176,19 +178,12 @@ class ClientNetwork(object):
 
             p = packet_pb2.Packet()
             p.packet_id = get_id('packet')
-            p.payload_types.append(Constants.INITIAL_GREETING_PAYLOAD_TYPE)
+            p.payload_types.append(Constants.JOIN_GAME)
+            p.autojoin = True
 
-            self.socket.sendto(p.SerializeToString(), self._server_addr)
+            self._send_packets([p], self._server_addr)
 
-        # Would you believe I wanted to not have another indentation level
-        if autojoin is not None and automake:
-            # automake is make a new game and join it
-            p = packet_pb2.Packet()
-            p.packet_id = get_id('packet')
-            p.payload_types.append(Constants.JOIN_OR_NEW_PAYLOAD_TYPE)
-            p.game_id = -1
-            p.new_game_name = "Shooty Bangbang"
-            p.join_new_game = True
+        self.game_id = None
 
 
     def update(self):
@@ -211,14 +206,29 @@ class ClientNetwork(object):
                 # Can't print exceptions when the tty is up
                 pass
 
+    def _send_packets(self, packets, addr):
+        for packet in packets:
+            self.socket.sendto(packet.SerializeToString(), addr)
+
     def send_command(self,cmd,arg):
-        pass
+        cmd_num = Constants.to_numerical_constant(cmd)
+        arg_num = Constants.to_numerical_constant(arg)
+
+        p = packet_pb2.Packet()
+        p.packet_id = get_id('packet')
+        p.payload_types.append(Constants.GAME_ACTION)
+        # Ah, we need to note the game_id that we're participating in
+        p.action_game_id = self.game_id
+        p.action = cmd_num
+        p.argument = arg_num
+
+        self._send_packets([p],self._server_addr)
 
     def find_me(self):
         return (0,0)
 
     def get_visible(self):
-        visible = {}
+        visible = self.known_world
         history = {}
         return visible, history
 
@@ -228,11 +238,66 @@ class ClientNetwork(object):
     def _error(self, packet, addr):
         pass
     def _vision_update(self, packet, addr):
-        pass
-        curses.flash()
+        """
+        repeated sint32 objects = 600 [packed=true];
+        // objects consists of 4-tuples: x,y,obj_type,attr_id
+        // attr_id is either -1 for no attributes, or an index of an attribute
+        message Attribute {
+            optional int32 number = 1;
+            optional int32 direction = 2;
+            optional int32 team = 3;
+            optional int32 hp_max = 4;
+            optional int32 hp = 5;
+            optional int32 max_ammo = 6;
+            optional int32 ammo = 7;
+        }
+        repeated Attribute attributes = 601;
+        """
+        # unpack attributes first
+        unpacked_attributes = []
+        attribute_keys = ["number", "direction", "team", "hp_max", "hp",
+                          "max_ammo", "ammo"]
+        constants_keys = ["direction"]
+
+        for attribute in packet.attributes:
+            unpacked = {}
+            for key in attribute_keys:
+                if attribute.HasField(key):
+                    value = getattr(attribute, key)
+                    if key in constants_keys:
+                        value = Constants.from_numerical_constant(value)
+                    unpacked[key] = value
+
+            unpacked_attributes.append(unpacked)
+
+        for x,y,obj_type,attr_id in grouper(4, packet.objects):
+            assert None not in (x,y,obj_type,attr_id)
+            obj_type = Constants.from_numerical_constant(obj_type)
+            if attr_id == -1:
+                attr = {}
+            else:
+                attr = unpacked_attributes[attr_id].copy()
+
+            if (x,y) not in self.known_world:
+                self.known_world[x,y] = []
+
+            self.known_world[x,y].append((obj_type, attr))
+
     def _keep_alive(self, packet, addr):
         pass
 
+    def _game_status(self, packet, addr):
+        if packet.status == Constants.STATUS_JOINED:
+            self.game_id = packet.status_game_id
+        elif packet.status == Constants.STATUS_LEFT:
+            self.game_id = None
+
+
+def grouper(n, iterable, fillvalue=None):
+    "Collect data into fixed-length chunks or blocks"
+    # grouper(3, 'ABCDEFG', 'x') --> ABC DEF Gxx
+    args = [iter(iterable)] * n
+    return itertools.izip_longest(fillvalue=fillvalue, *args)
 
 class FakeNetwork(object):
     def __init__(self):
@@ -397,18 +462,23 @@ class Server(object):
 
     def __init__(self):
         self.handlers = {
-            0: self._initial_greeting,
-            # 1 games running (s->c)
-            2: self._join_or_new_game,
-            3: self._error,
-            4: self._game_action,
-            # 5 reserved
-            # 6 vision update (s->c)
-            7: self._keep_alive,
+            Constants.GET_GAMES_LIST: self._get_games_list,
+            # games running (s->c)
+            Constants.MAKE_NEW_GAME: self._make_new_game,
+            Constants.ERROR: self._error,
+            Constants.GAME_ACTION: self._game_action,
+            Constants.JOIN_GAME: self._join_game,
+            # vision update (s->c)
+            Constants.KEEP_ALIVE: self._keep_alive,
 
         }
         self.port = Constants.DEFAULT_PORT
+
         self.games = []
+
+        # Debug starting game
+        g = Game(20,"empty","Default","ffa",get_id('game'))
+        self.games.append(g)
 
         self.seen_ids = []
 
@@ -430,6 +500,12 @@ class Server(object):
 
                 try:
                     packet = packet_pb2.Packet.FromString(data)
+                    #print("Recv: {}".format(packet))
+
+                    if addr not in self.clients:
+                        self.clients[addr] = {
+                            'player_id': get_id('player')
+                        }
 
                     # disabled while we're debugging
                     #if (addr,packet.packet_id) in self.seen_ids:
@@ -444,19 +520,28 @@ class Server(object):
                     for payload_type in packet.payload_types:
                         self.handlers[payload_type](packet, addr)
 
-                    if addr not in self.clients:
-                        self.clients[addr] = {
-                            'player_id': get_id('player')
-                        }
 
                     self.clients[addr]['last heard from'] = time.time()
 
                 except Exception as e:
                     traceback.print_exc()
 
-    def _initial_greeting(self, packet, addr):
+    def _send_packets(self, packets):
+        for packet_player_id, packet in packets:
+            # Determine addr
+            sent = False
+            for addr, addr_dict in self.clients.items():
+                if packet_player_id == addr_dict['player_id']:
+                    #print("Sent: {}".format(packet))
+                    self.socket.sendto(packet.SerializeToString(), addr)
+                    sent = True
+                    break
+
+            assert sent
+
+    def _get_games_list(self, packet, addr):
         reply = packet_pb2.Packet()
-        reply.payload_types.append(Constants.GAMES_RUNNING_PAYLOAD_TYPE)
+        reply.payload_types.append(Constants.GAMES_RUNNING)
 
         reply.packet_id = get_id()
 
@@ -469,34 +554,33 @@ class Server(object):
             game_message.max_players = game.max_players
             game_message.current_players = game.current_players
 
-        data = reply.SerializeToString()
-        self.socket.sendto(data, addr)
+        self._send_packets([reply], addr)
 
-    def _join_or_new_game(self, packet, addr):
-        if packet.game_id == -1:
-            # creating new game
-            max_players = packet.max_players or 20
-            map_generator = packet.map_generator or "purerandom"
-            game_name = packet.new_game_name or "Unnamed"
-            game_mode = packet.new_game_mode or "ffa"
-            game_id = self.get_id('game')
+    def _make_new_game(self, packet, addr):
+        # creating new game
+        max_players = packet.max_players or 20
+        map_generator = packet.map_generator or "purerandom"
+        game_name = packet.new_game_name or "Unnamed"
+        game_mode = packet.new_game_mode or "ffa"
+        game_id = get_id('game')
 
-            g = Game(max_players,map_generator,game_name,game_mode,game_id)
-            if packet.join_new_game:
-                packets = g.player_join(self.clients[addr]['player_id'])
-                for packet in packets:
-                    self.socket.sendto(packet.SerializeToString(), addr)
-
-            self.games.append(g)
-
-        else:
-            # joining existing game
-            game_id = packet.game_id
-            assert game_id in [g.id for g in self.games]
+        g = Game(max_players,map_generator,game_name,game_mode,game_id)
+        if packet.join_new_game:
             packets = g.player_join(self.clients[addr]['player_id'])
-            for packet in packets:
-                self.socket.sendto(packet.SerializeToString(), addr)
+            self._send_packets(packets)
 
+        self.games.append(g)
+
+    def _join_game(self, packet, addr):
+        # joining existing game
+        if packet.autojoin:
+            game = random.choice(self.games)
+        else:
+            game_id = packet.join_game_id
+            game = [g for g in self.games if g.id == game_id][0]
+
+        packets = game.player_join(self.clients[addr]['player_id'])
+        self._send_packets(packets)
 
     def _error(self, packet, addr):
         # Handle silently.
@@ -511,10 +595,7 @@ class Server(object):
         assert game.is_player_in_game(player_id)
 
         packets = game.player_action(player_id, packet.action, packet.argument)
-
-        for packet in packets:
-            self.socket.sendto(packet.SerializeToString(), addr)
-
+        self._send_packets(packets)
 
     def _keep_alive(self, packet, addr):
         pass
@@ -531,6 +612,14 @@ def purerandom_map(X=80,Y=24,seed=0):
 
     return world
 
+def empty_map(X=80,Y=24,seed=None):
+    world = {}
+
+    for i,j in itertools.product(range(X), range(Y)):
+        world[i,j] = [(Constants.OBJ_EMPTY, {})]
+    return world
+
+
 def network_pack_object(coord, object):
     x,y = coord
     obj_type, obj_attr = object
@@ -539,23 +628,26 @@ def network_pack_object(coord, object):
     if obj_attr == {}:
         attribute = None
     else:
-        attribute = packet_pb2.Message.Attribute()
-        if 'number' in obj_attr:
-            attribute.number = obj_attr['number']
-        elif 'direction' in obj_attr:
-            attribute.direction = obj_attr['direction']
-        elif 'team' in obj_attr:
-            attribute.team = obj_attr['team']
+        attribute = packet_pb2.Packet.Attribute()
+        keys = ["number", "direction", "team", "hp_max", "hp", "max_ammo",
+                "ammo"]
+        for key in keys:
+            if key in obj_attr:
+                value = obj_attr[key]
+                if type(value) == str:
+                    value = Constants.to_numerical_constant(value)
+                setattr(attribute, key, value)
 
     return x,y,obj_type,attribute
 
 class Game(object):
     MAP_GENERATORS = {
         'purerandom': purerandom_map,
+        'empty': empty_map,
     }
     def __init__(self,max_players,map_generator,name,mode,id):
         self.max_players = max_players
-        self.world = self.MAP_GENERATORS[map_generator]
+        self.world = self.MAP_GENERATORS[map_generator]()
         self.name = name
         self.mode = mode
         self.id = id
@@ -588,32 +680,34 @@ class Game(object):
 
         self.world[spawn_coord].append(player)
 
-        return self._send_player_vision(player_id)
+        join_packet = packet_pb2.Packet()
+        join_packet.packet_id = get_id('packet')
+        join_packet.payload_types.append(Constants.GAME_STATUS)
+        join_packet.status_game_id = self.id
+        join_packet.status = Constants.STATUS_JOINED
 
-    def _send_player_vision(player_id):
-        player_locations = self.find_obj_locations(Constants.OBJ_PLAYER)
-        player = None
-        for location in player_locations:
-            for obj, attr in self.world[location]:
-                if obj == Constants.OBJ_PLAYER and attr['number'] == player_id:
-                    player = (obj, attr)
-                    break
+        locations = self._determine_can_see(spawn_coord)
 
-            if player is not None:
-                break
+        return [(player_id, join_packet)] + self._send_player_vision(player_id, locations)
 
-        assert player is not None
+    def _determine_can_see(self, coord):
+        return neighbourhood(coord,n=3)
 
-        can_see = neighbourhood(location,n=3)
+    def _send_player_vision(self,player_id, locations):
+        location, player = self._find_player(player_id)
 
-        packet = packet_pb.Packet()
+        packet = packet_pb2.Packet()
         packet.packet_id = get_id('packet')
-        packet.payload_types.append(Constants.VISION_UPDATE_PAYLOAD_TYPE)
+        packet.payload_types.append(Constants.VISION_UPDATE)
+        packet.vision_game_id = self.id
 
         # Now to pack the objects
         attributes = []
 
-        for coord in can_see:
+        for coord in locations:
+            if coord not in self.world:
+                continue
+
             for object in self.world[coord]:
                 x,y,obj_type,attribute = network_pack_object(coord,object)
                 if attribute is None:
@@ -626,7 +720,7 @@ class Game(object):
 
         packet.attributes.extend(attributes)
 
-        return (packet,)
+        return [(player_id, packet)]
 
     def find_obj_locations(self, obj_type):
         locations = []
@@ -638,26 +732,112 @@ class Game(object):
 
         return locations
 
+    def _find_player(self, number):
+        # Find player location
+        location = None
+
+        for coord, objects in self.world.items():
+            for obj, attr in objects:
+                if obj == Constants.OBJ_PLAYER and attr['number'] == number:
+                    player = (obj, attr)
+                    location = coord
+                    break
+
+            if location is not None:
+                break
+
+        assert location is not None
+
+        return location, player
+
     def player_action(self, player_id, action, argument):
         assert player_id in self.players
         # Translate into internal constants
         cmd = Constants.from_numerical_constant(action)
         arg = Constants.from_numerical_constant(argument)
 
-        return ()
+        location, player = self._find_player(player_id)
 
+        handlers = {
+            Constants.CMD_LOOK: self._look,
+            Constants.CMD_MOVE: self._move
+        }
+
+        packets = handlers[cmd](player, location, arg)
+
+        return packets
+
+    def _look(self, player, location, arg):
+        player[1]['direction'] = arg
+        return self._mark_dirty([location])
+
+    def _move(self, player, location, arg):
+        self.world[location].remove(player)
+
+        diff = Constants.DIFFS[arg]
+
+        old_location = location
+        new_location = (location[0] + diff[0], location[1] + diff[1])
+        moved = False
+
+        if new_location in self.world:
+            # If the area is empty
+            if Constants.OBJ_EMPTY in [oa[0] for oa in self.world[new_location]]:
+                self.world[new_location].append(player)
+                moved = True
+
+        if not moved:
+            # Player can't move to that location, no move
+            self.world[location].append(player)
+            return []
+        else:
+            player_id = player[1]['number']
+            dirty_packets = self._mark_dirty([old_location,new_location])
+
+
+            new_can_see = self._determine_can_see(new_location)
+            new_vision_packets = self._send_player_vision(player_id,
+                                                          new_can_see)
+            return dirty_packets + new_vision_packets
+
+
+    def _mark_dirty(self, coordinates):
+        # Vision is assumed to be reciprical, so if a player is in
+        # sight of a dirty coordinate, then he needs to be updated
+        packets = []
+        for player_id in self.players:
+            location, playerobj = self._find_player(player_id)
+            player_vision = self._determine_can_see(location)
+
+            dirty_locations = set(player_vision) & set(coordinates)
+
+            if dirty_locations:
+                packets.extend(self._send_player_vision(player_id,
+                                                        dirty_locations))
+
+        return packets
 
     def tick(self):
         # Do anything that occurs independently of network input
         pass
 
 class Constants:
-# Constants
+    # Constants
     DEFAULT_PORT = 25008
-    INITIAL_GREETING_PAYLOAD_TYPE = 0
-    GAMES_RUNNING_PAYLOAD_TYPE = 1
-    JOIN_OR_NEW_PAYLOAD_TYPE = 2
-    VISION_UPDATE_PAYLOAD_TYPE = 6
+
+    GET_GAMES_LIST = 0
+    GAMES_RUNNING = 1
+    MAKE_NEW_GAME = 2
+    ERROR = 3
+    GAME_ACTION = 4
+    JOIN_GAME = 5
+    VISION_UPDATE = 6
+    KEEP_ALIVE = 7
+    GAME_STATUS = 8
+
+
+    STATUS_JOINED = 1
+    STATUS_LEFT = 2
 
     UP = "up"
     NORTHEAST = "ne"

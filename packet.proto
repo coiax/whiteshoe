@@ -5,7 +5,7 @@ message Packet {
     // payload type can be any of the following
     // and a packet can contain multiple payloads, although not all of them
     // make sense together
-    // 0 - c->s initial greeting
+    // 0 - c->s get games list
 
     // 1 - s->c games running
     message Game {
@@ -17,10 +17,7 @@ message Packet {
     }
     repeated Game games = 100;
 
-    // 2 - c->s join/new game
-    // game_id is -1 if I want to start a new game
-    optional sint32 game_id = 200;
-
+    // 2 - c->s make new game
     // New game creation options
     optional int32 max_players = 201;
     optional string map_generator = 202;
@@ -36,11 +33,16 @@ message Packet {
     optional int32 action_game_id = 400;
     optional int32 action = 401;
     optional int32 argument = 402;
-    // 5 reserved
+
+    // 5 c->s join game
+    // If true, just attempt to join any game
+    optional bool autojoin = 500;
+    // if false, join this game_id
+    optional int32 join_game_id = 501;
 
     // 6 - vision update
-
-    repeated sint32 objects = 600 [packed=true];
+    optional int32 vision_game_id = 600;
+    repeated sint32 objects = 601 [packed=true];
     // objects consists of 4-tuples: x,y,obj_type,attr_id
     // attr_id is either -1 for no attributes, or an index of an attribute
     message Attribute {
@@ -52,8 +54,12 @@ message Packet {
         optional int32 max_ammo = 6;
         optional int32 ammo = 7;
     }
-    repeated Attribute attributes = 601;
+    repeated Attribute attributes = 602;
 
     // 7 - keep alive
     optional sint64 timestamp = 700;
+
+    // 8 - game status
+    optional int32 status_game_id = 800;
+    optional int32 status = 801;
 }
