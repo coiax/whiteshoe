@@ -11,6 +11,7 @@ import select
 import sys
 import traceback
 import collections
+import datetime
 
 import packet_pb2
 
@@ -108,7 +109,10 @@ class GameScene(object):
         display_chr = {
             Constants.OBJ_WALL: '#',
             Constants.OBJ_PLAYER: '@',
-            Constants.OBJ_EMPTY: '.'}[obj]
+            Constants.OBJ_EMPTY: '.',
+            Constants.OBJ_HORIZONTAL_WALL: '-',
+            Constants.OBJ_VERTICAL_WALL: '|',
+            Constants.OBJ_CORNER_WALL: '+'}[obj]
 
         if obj == Constants.OBJ_PLAYER:
             direction = attr['direction']
@@ -196,6 +200,7 @@ class ClientNetwork(object):
 
         self.game_id = None
         self.player_id = None
+        self.vision = None
 
 
     def update(self):
@@ -250,7 +255,11 @@ class ClientNetwork(object):
 
     def get_visible(self):
         player_location = self.find_me()
-        can_see = vision_basic(self.known_world, player_location)
+        if self.vision is not None:
+            can_see = Constants.VISION[self.vision](self.known_world,
+                                                    player_location)
+        else:
+            can_see = list(self.known_world)
 
         visible = {}
         history = collections.defaultdict(list)
@@ -326,6 +335,7 @@ class ClientNetwork(object):
         if packet.status == Constants.STATUS_JOINED:
             self.game_id = packet.status_game_id
             self.player_id = packet.your_player_id
+            self.vision = packet.game_vision
         elif packet.status == Constants.STATUS_LEFT:
             self.game_id = None
 
@@ -520,6 +530,8 @@ class Server(object):
 
         self.socket = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
+        self.timeout = 30
+
 
     def serve(self):
         self.socket.bind(('',self.port))
@@ -527,6 +539,19 @@ class Server(object):
         while True:
             for game in self.games:
                 game.tick()
+
+            for addr in list(self.clients):
+                last_heard = self.clients[addr]['last_heard']
+                seconds = (datetime.datetime.now() - last_heard).seconds
+                if seconds > self.timeout:
+                    player_id = self.clients[addr]['player_id']
+                    for game in self.games:
+                        if game.is_player_in_game(player_id):
+                            packets = game.player_leave(player_id)
+                            self._send_packets(packets)
+
+                    del self.clients[addr]
+
 
             rlist, wlist, xlist = select.select([self.socket],[],[],0.1)
             for rs in rlist:
@@ -555,7 +580,7 @@ class Server(object):
                         self.handlers[payload_type](packet, addr)
 
 
-                    self.clients[addr]['last heard from'] = time.time()
+                    self.clients[addr]['last_heard'] = datetime.datetime.now()
 
                 except Exception as e:
                     traceback.print_exc()
@@ -653,6 +678,101 @@ def empty_map(X=80,Y=24,seed=None):
         world[i,j] = [(Constants.OBJ_EMPTY, {})]
     return world
 
+def ca_maze_map(X=80,Y=24,seed=1):
+    r = random.Random(seed)
+    ca_world = {}
+
+    starting_density = 0.35
+    max_ticks = 300
+    B = [3]
+    S = [1,2,3,4,5]
+
+    # A cellular automata with rules B3/S12345 generates a maze based on
+    # starting conditions
+    for i,j in itertools.product(range(X),range(Y)):
+        ca_world[i,j] = r.random() < starting_density
+
+    ticks = 0
+    live = True
+    while live and ticks < max_ticks:
+        live = False
+        ticks += 1
+
+        will_birth = set()
+        will_die = set()
+
+        for coord in ca_world:
+            alive = ca_world[coord]
+
+            neighbours = neighbourhood(coord,n=1)
+            neighbours.remove(coord)
+            # Remember that True has a numeric value of 1
+            number = sum(ca_world[n] for n in neighbours if n in ca_world)
+            if not alive and number in B:
+                will_birth.add(coord)
+                live = True
+
+            elif alive and number not in S:
+                will_die.add(coord)
+                live = True
+
+        for coord in will_birth:
+            ca_world[coord] = True
+
+        for coord in will_die:
+            ca_world[coord] = False
+
+    # Now the maze CA tends to generate isolated islands
+
+    world = {}
+    for coord in ca_world:
+        if ca_world[coord]:
+            obj = [(Constants.OBJ_WALL, {})]
+        else:
+            obj = [(Constants.OBJ_EMPTY, {})]
+
+        world[coord] = obj
+
+    return world
+
+def pretty_walls(world):
+    for coord, objects in world.items():
+        if objects[0][0] == Constants.OBJ_EMPTY:
+            continue
+
+        vertical = False
+        horizontal = False
+
+        for neighbour in ((coord[0], coord[1] - 1), (coord[0], coord[1] + 1)):
+            if neighbour not in world:
+                continue
+            if world[neighbour][0][0] != Constants.OBJ_EMPTY:
+                vertical = True
+                break
+
+        for neighbour in ((coord[0] - 1, coord[1]), (coord[0] + 1, coord[1])):
+            if neighbour not in world:
+                continue
+            if world[neighbour][0][0] != Constants.OBJ_EMPTY:
+                horizontal = True
+                break
+
+        if not vertical and not horizontal:
+            # Do nothing
+            continue
+        elif vertical and not horizontal:
+            del objects[0]
+            objects.append((Constants.OBJ_VERTICAL_WALL, {}))
+        elif not vertical and horizontal:
+            del objects[0]
+            objects.append((Constants.OBJ_HORIZONTAL_WALL, {}))
+        elif vertical and horizontal:
+            del objects[0]
+            objects.append((Constants.OBJ_CORNER_WALL, {}))
+
+    return world
+
+
 def vision_basic(world, coord):
     return neighbourhood(coord,n=3)
 
@@ -680,12 +800,14 @@ class Game(object):
     MAP_GENERATORS = {
         'purerandom': purerandom_map,
         'empty': empty_map,
+        'ca_maze':ca_maze_map
     }
     def __init__(self,max_players=20,map_generator='purerandom',
-                 name='Untitled',mode='ffa',id=None):
+                 name='Untitled',mode='ffa',id=None,vision='basic'):
 
         self.max_players = max_players
         self.world = self.MAP_GENERATORS[map_generator]()
+        print("World ({0}) generated.".format(map_generator))
         self.name = name
         self.mode = mode
 
@@ -694,7 +816,7 @@ class Game(object):
 
         self.id = id
 
-        self.vision = vision_basic
+        self.vision = vision
 
         self.players = []
 
@@ -726,16 +848,32 @@ class Game(object):
         join_packet = packet_pb2.Packet()
         join_packet.packet_id = get_id('packet')
         join_packet.payload_types.append(Constants.GAME_STATUS)
+
         join_packet.status_game_id = self.id
         join_packet.status = Constants.STATUS_JOINED
         join_packet.your_player_id = player_id
+        join_packet.game_name = self.name
+        join_packet.game_mode = self.mode
+        join_packet.game_max_players = self.max_players
+        join_packet.game_current_players = self.current_players
+        join_packet.game_vision = self.vision
 
         locations = self._determine_can_see(spawn_coord)
 
         return [(player_id, join_packet)] + self._send_player_vision(player_id, locations)
 
+    def player_leave(self, player_id):
+        assert player_id in self.players
+        location, player = self._find_player(player_id)
+
+        self.world[location].remove(player)
+        self.players.remove(player_id)
+
+        # Later, we might make them blow up
+        return self._mark_dirty([location])
+
     def _determine_can_see(self, coord):
-        return self.vision(self.world, coord)
+        return Constants.VISION[self.vision](self.world, coord)
 
     def _send_player_vision(self,player_id, locations):
         location, player = self._find_player(player_id)
@@ -920,11 +1058,19 @@ class Constants:
     CMD_FIRE = "fire"
 
     OBJ_WALL = "wall"
+    OBJ_HORIZONTAL_WALL = "h-wall"
+    OBJ_VERTICAL_WALL = "v-wall"
+    OBJ_CORNER_WALL = "c-wall"
     OBJ_PLAYER = "player"
     OBJ_EMPTY = "empty"
 
-    HISTORICAL_OBJECTS = (OBJ_WALL, OBJ_EMPTY)
-    SOLID_OBJECTS = (OBJ_WALL, OBJ_PLAYER)
+    WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)
+    HISTORICAL_OBJECTS = WALLS + (OBJ_EMPTY,)
+    SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
+
+    VISION = {
+        'basic': vision_basic,
+    }
     @classmethod
     def to_numerical_constant(cls,constant):
         constants = list(vars(cls).values())

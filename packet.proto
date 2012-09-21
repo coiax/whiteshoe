@@ -62,5 +62,11 @@ message Packet {
     // 8 - game status
     optional int32 status_game_id = 800;
     optional int32 status = 801;
+
     optional int32 your_player_id = 802;
+    optional string game_name = 803;
+    optional string game_mode = 804;
+    optional int32 game_max_players = 805;
+    optional int32 game_current_players = 806;
+    optional string game_vision = 807;
 }
