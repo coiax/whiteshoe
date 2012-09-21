@@ -74,7 +74,7 @@ class GameScene(object):
         # corner, and we want to be able to move around
         stdscr.clear()
 
-        my_coord = self.network.find_me()
+        my_coord, player = self.network.find_me()
 
         for coord, objects in history.items():
             x,y = coord
@@ -248,16 +248,18 @@ class ClientNetwork(object):
                     if (object[0] == Constants.OBJ_PLAYER and
                         object[1]['number'] == self.player_id):
 
-                        return coord
+                        return coord, object
 
         # Failsafe
-        return (0,0)
+        return (0,0), [Constants.OBJ_PLAYER, {}]
 
     def get_visible(self):
-        player_location = self.find_me()
+        player_location, player = self.find_me()
+
         if self.vision is not None:
+            direction = player[1].get('direction',Constants.RIGHT)
             can_see = Constants.VISION[self.vision](self.known_world,
-                                                    player_location)
+                                                    player_location,direction)
         else:
             can_see = list(self.known_world)
 
@@ -521,7 +523,7 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        g = Game()
+        g = Game(vision='cone')
         self.games.append(g)
 
         self.seen_ids = []
@@ -541,7 +543,10 @@ class Server(object):
                 game.tick()
 
             for addr in list(self.clients):
-                last_heard = self.clients[addr]['last_heard']
+                last_heard = self.clients[addr].get('last_heard')
+                if last_heard is None:
+                    continue
+
                 seconds = (datetime.datetime.now() - last_heard).seconds
                 if seconds > self.timeout:
                     player_id = self.clients[addr]['player_id']
@@ -773,8 +778,44 @@ def pretty_walls(world):
     return world
 
 
-def vision_basic(world, coord):
+def vision_basic(world, coord, direction):
     return neighbourhood(coord,n=3)
+
+def vision_cone(world, coord, direction):
+    visible = set()
+    # The square you are in is always visible as well one square
+    # behind you
+    visible.add(coord)
+
+    main_direction = Constants.DIFFS[direction]
+    behind_you = main_direction[0] * -1, main_direction[1] * -1
+
+    visible.add((coord[0] + behind_you[0], coord[1] + behind_you[1]))
+
+
+    # First, everything in the direction the player is looking
+    # straight ahead
+
+    def look_until_wall(start, diff):
+        coord = start
+        v = set()
+
+        while True:
+            coord = coord[0] + diff[0], coord[1] + diff[1]
+            if coord not in world:
+                break
+            v.add(coord)
+            objects = world[coord]
+            for o in objects:
+                if o[0] in Constants.SOLID_OBJECTS:
+                    break
+        return v
+
+    for direction in Constants.ADJACENT[direction]:
+        visible.update(look_until_wall(coord,
+                                       Constants.DIFFS[direction]))
+
+    return visible
 
 def network_pack_object(coord, object):
     x,y = coord
@@ -858,7 +899,8 @@ class Game(object):
         join_packet.game_current_players = self.current_players
         join_packet.game_vision = self.vision
 
-        locations = self._determine_can_see(spawn_coord)
+        direction = player[1]['direction']
+        locations = self._determine_can_see(spawn_coord, direction)
 
         return [(player_id, join_packet)] + self._send_player_vision(player_id, locations)
 
@@ -872,8 +914,8 @@ class Game(object):
         # Later, we might make them blow up
         return self._mark_dirty([location])
 
-    def _determine_can_see(self, coord):
-        return Constants.VISION[self.vision](self.world, coord)
+    def _determine_can_see(self, coord, direction):
+        return Constants.VISION[self.vision](self.world, coord, direction)
 
     def _send_player_vision(self,player_id, locations):
         location, player = self._find_player(player_id)
@@ -981,9 +1023,9 @@ class Game(object):
             self.world[new_location].append(player)
             player_id = player[1]['number']
             dirty_packets = self._mark_dirty([old_location,new_location])
+            direction = player[1]['direction']
 
-
-            new_can_see = self._determine_can_see(new_location)
+            new_can_see = self._determine_can_see(new_location, direction)
             new_vision_packets = self._send_player_vision(player_id,
                                                           new_can_see)
             return dirty_packets + new_vision_packets
@@ -995,7 +1037,8 @@ class Game(object):
         packets = []
         for player_id in self.players:
             location, playerobj = self._find_player(player_id)
-            player_vision = self._determine_can_see(location)
+            direction = playerobj[1]['direction']
+            player_vision = self._determine_can_see(location, direction)
 
             dirty_locations = set(player_vision) & set(coordinates)
 
@@ -1070,6 +1113,7 @@ class Constants:
 
     VISION = {
         'basic': vision_basic,
+        'cone': vision_cone,
     }
     @classmethod
     def to_numerical_constant(cls,constant):
