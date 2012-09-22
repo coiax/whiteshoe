@@ -53,6 +53,8 @@ message Packet {
         optional int32 hp = 5;
         optional int32 max_ammo = 6;
         optional int32 ammo = 7;
+        optional int32 owner = 8;
+        optional int32 size = 9;
     }
     repeated Attribute attributes = 602;
 

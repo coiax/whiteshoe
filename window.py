@@ -112,7 +112,8 @@ class GameScene(object):
             Constants.OBJ_EMPTY: '.',
             Constants.OBJ_HORIZONTAL_WALL: '-',
             Constants.OBJ_VERTICAL_WALL: '|',
-            Constants.OBJ_CORNER_WALL: '+'}[obj]
+            Constants.OBJ_CORNER_WALL: '+',
+            Constants.OBJ_BULLET: ':'}.get(obj,'?')
 
         if obj == Constants.OBJ_PLAYER:
             direction = attr['direction']
@@ -129,6 +130,12 @@ class GameScene(object):
                 display_chr = '^'
             elif direction == Constants.DOWN:
                 display_chr = 'v'
+        elif obj == Constants.OBJ_BULLET:
+            owner = attr['owner']
+            if owner == self.network.player_id:
+                colour = curses.color_pair(1)
+            else:
+                colour = curses.color_pair(2)
 
         assert display_chr is not None
 
@@ -162,14 +169,12 @@ class GameScene(object):
             ord('H'): (Constants.CMD_LOOK, Constants.LEFT),
             ord('K'): (Constants.CMD_LOOK, Constants.UP),
             ord('L'): (Constants.CMD_LOOK, Constants.RIGHT),
+
+            ord('f'): (Constants.CMD_FIRE, 1)
         }
         if c in cmds:
             cmd = cmds[c]
             self.network.send_command(cmd[0], cmd[1])
-        elif c == ord('f'):
-            curses.flash()
-        elif c == ord('r'):
-            self.network.generate_world(seed=random.random())
 
 class ClientNetwork(object):
     def __init__(self,autojoin=None,automake=False):
@@ -202,10 +207,25 @@ class ClientNetwork(object):
         self.player_id = None
         self.vision = None
 
+        self.keepalive_timer = 0
+        self.last_tick = None
+
 
     def update(self):
         # Do network things
         self._ticklet()
+        if self.last_tick is None:
+            self.last_tick = datetime.datetime.now()
+        else:
+            diff = (datetime.datetime.now() - self.last_tick)
+            self.last_tick = datetime.datetime.now()
+
+            self.keepalive_timer += diff.seconds + (diff.microseconds*10.0**-6)
+
+            if self.keepalive_timer > Constants.KEEPALIVE_TIME:
+                self.keepalive_timer -= Constants.KEEPALIVE_TIME
+
+                self._send_keepalive()
     def _ticklet(self):
         rlist, wlist, xlist = select.select([self.socket],[],[],0.1)
         for rs in rlist:
@@ -222,6 +242,14 @@ class ClientNetwork(object):
                 #traceback.print_exc()
                 # Can't print exceptions when the tty is up
                 pass
+
+    def _send_keepalive(self):
+        p = packet_pb2.Packet()
+        p.packet_id = get_id('packet')
+        p.payload_types.append(Constants.KEEP_ALIVE)
+        p.timestamp = int(time.time())
+
+        self._send_packets([p], self._server_addr)
 
     def _send_packets(self, packets, addr):
         for packet in packets:
@@ -299,16 +327,13 @@ class ClientNetwork(object):
         """
         # unpack attributes first
         unpacked_attributes = []
-        attribute_keys = ["number", "direction", "team", "hp_max", "hp",
-                          "max_ammo", "ammo"]
-        constants_keys = ["direction"]
 
         for attribute in packet.attributes:
             unpacked = {}
-            for key in attribute_keys:
+            for key in Constants.ATTRIBUTE_KEYS:
                 if attribute.HasField(key):
                     value = getattr(attribute, key)
-                    if key in constants_keys:
+                    if key in Constants.ATTRIBUTE_CONSTANT_KEYS:
                         value = Constants.from_numerical_constant(value)
                     unpacked[key] = value
 
@@ -400,7 +425,8 @@ class Server(object):
 
         while True:
             for game in self.games:
-                game.tick()
+                packets = game.tick()
+                self._send_packets(packets)
 
             for addr in list(self.clients):
                 last_heard = self.clients[addr].get('last_heard')
@@ -418,7 +444,7 @@ class Server(object):
                     del self.clients[addr]
 
 
-            rlist, wlist, xlist = select.select([self.socket],[],[],0.1)
+            rlist, wlist, xlist = select.select([self.socket],[],[],0.05)
             for rs in rlist:
                 data, addr = rs.recvfrom(4096)
 
@@ -660,15 +686,16 @@ def vision_cone(world, coord, direction):
         coord = start
         v = set()
 
-        while True:
+        running = True
+        while running:
             coord = coord[0] + diff[0], coord[1] + diff[1]
             if coord not in world:
                 break
             v.add(coord)
             objects = world[coord]
             for o in objects:
-                if o[0] in Constants.SOLID_OBJECTS:
-                    break
+                if o[0] in Constants.OPAQUE_OBJECTS:
+                    running = False
         return v
 
     for direction in Constants.ADJACENT[direction]:
@@ -687,11 +714,11 @@ def network_pack_object(coord, object):
     else:
         attribute = packet_pb2.Packet.Attribute()
         keys = ["number", "direction", "team", "hp_max", "hp", "max_ammo",
-                "ammo"]
-        for key in keys:
+                "ammo","owner"]
+        for key in Constants.ATTRIBUTE_KEYS:
             if key in obj_attr:
                 value = obj_attr[key]
-                if type(value) == str:
+                if key in Constants.ATTRIBUTE_CONSTANT_KEYS:
                     value = Constants.to_numerical_constant(value)
                 setattr(attribute, key, value)
 
@@ -720,6 +747,8 @@ class Game(object):
         self.vision = vision
 
         self.players = []
+
+        self.last_tick = None
 
     @property
     def current_players(self):
@@ -806,15 +835,20 @@ class Game(object):
 
         return [(player_id, packet)]
 
-    def find_obj_locations(self, obj_type):
+    def find_objs(self, obj_type):
         locations = []
         for coord, objects in self.world.items():
             for obj, attr in objects:
                 if obj == obj_type:
-                    locations.append(coord)
+                    pair = (coord, (obj,attr))
+                    locations.append(pair)
                     break
 
         return locations
+
+    def find_obj_locations(self, obj_type):
+        locations = self.find_objs(obj_type)
+        return [pair[0] for pair in locations]
 
     def _find_player(self, number):
         # Find player location
@@ -844,7 +878,8 @@ class Game(object):
 
         handlers = {
             Constants.CMD_LOOK: self._look,
-            Constants.CMD_MOVE: self._move
+            Constants.CMD_MOVE: self._move,
+            Constants.CMD_FIRE: self._fire,
         }
 
         packets = handlers[cmd](player, location, arg)
@@ -890,6 +925,20 @@ class Game(object):
                                                           new_can_see)
             return dirty_packets + new_vision_packets
 
+    def _fire(self, player, location, arg):
+        direction = player[1]['direction']
+        player_id = player[1]['number']
+
+        diff = Constants.DIFFS[direction]
+        bullet_location = (location[0] + diff[0], location[1] + diff[1])
+
+        attr = {'owner': player_id, 'direction':direction, 'size':arg}
+        bullet = (Constants.OBJ_BULLET, attr)
+
+        self.world[bullet_location].append(bullet)
+
+        return self._mark_dirty([bullet_location])
+
 
     def _mark_dirty(self, coordinates):
         # Vision is assumed to be reciprical, so if a player is in
@@ -910,7 +959,49 @@ class Game(object):
 
     def tick(self):
         # Do anything that occurs independently of network input
-        pass
+        # like bullets moving
+        old_time = self.last_tick
+        self.last_tick = now = datetime.datetime.now()
+
+        if old_time is None:
+            # Can't do anything on a tick until we know how much time
+            # has passed
+            return ()
+
+        time_diff = old_time - now
+        time_diff_s = time_diff.seconds + (time_diff.microseconds * 10.0**-6)
+
+        dirty_coords = set()
+
+        # Pair of (coord, object)
+        bullets = self.find_objs(Constants.OBJ_BULLET)
+        for coord,object in bullets:
+            attr = object[1]
+            size = attr['size']
+            speed = Constants.BULLET_SPEEDS[size]
+
+            if '_time_remaining' not in attr:
+                attr['_time_remaining'] = speed
+
+            attr['_time_remaining'] -= time_diff_s
+
+            if attr['_time_remaining'] < 0:
+                attr['_time_remaining'] += speed
+
+
+                self.world[coord].remove(object)
+                dirty_coords.add(coord)
+
+
+                loc_diff = Constants.DIFFS[object[1]['direction']]
+
+                new_coord = (coord[0] + loc_diff[0], coord[1] + loc_diff[1])
+                if new_coord in self.world:
+                    self.world[new_coord].append(object)
+                    dirty_coords.add(new_coord)
+
+
+        return self._mark_dirty(dirty_coords)
 
 class Constants:
     # Constants
@@ -966,15 +1057,33 @@ class Constants:
     OBJ_CORNER_WALL = "c-wall"
     OBJ_PLAYER = "player"
     OBJ_EMPTY = "empty"
+    OBJ_BULLET = "bullet"
 
     WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)
     HISTORICAL_OBJECTS = WALLS + (OBJ_EMPTY,)
     SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
+    OPAQUE_OBJECTS = WALLS
 
     VISION = {
         'basic': vision_basic,
         'cone': vision_cone,
     }
+    ATTRIBUTE_KEYS = ("number", "direction", "team", "hp_max", "hp",
+                      "max_ammo", "ammo", "owner","size")
+    ATTRIBUTE_CONSTANT_KEYS = ("direction")
+
+    BULLET_SPEEDS = {
+        1: 0.05,
+        2: 0.10,
+        3: 0.15,
+        4: 0.20,
+        5: 0.25,
+        6: 0.30,
+        7: 0.35,
+        8: 0.40,
+        9: 0.45,
+    }
+    KEEPALIVE_TIME = 5
     @classmethod
     def to_numerical_constant(cls,constant):
         constants = list(vars(cls).values())
