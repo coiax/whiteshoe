@@ -291,8 +291,9 @@ class ClientNetwork(object):
 
         if self.vision is not None:
             direction = player[1].get('direction',Constants.RIGHT)
-            can_see = Constants.VISION[self.vision](self.known_world,
+            visible_world = Constants.VISION[self.vision](self.known_world,
                                                     player_location,direction)
+            can_see = set(visible_world)
         else:
             can_see = list(self.known_world)
 
@@ -668,9 +669,28 @@ def pretty_walls(world):
 
     return world
 
+def _visible_world(world, visible):
+    visible_world = {}
 
-def vision_basic(world, coord, direction):
-    return neighbourhood(coord,n=3)
+    for coord in visible:
+        if coord not in world:
+            continue
+
+        visible = []
+        visible.extend(world[coord])
+        visible_world[coord] = visible
+
+    for coord, objects in world.items():
+        for obj,attr in objects:
+            if obj in Constants.ALWAYS_VISIBLE_OBJECTS:
+                if coord not in visible_world:
+                    visible_world[coord] = []
+                visible_world[coord].append((obj,attr))
+    return visible_world
+
+def vision_basic(world, start_coord, direction):
+    visible = neighbourhood(start_coord, n=3)
+    return _visible_world(world, visible)
 
 def vision_cone(world, coord, direction):
     visible = set()
@@ -707,7 +727,7 @@ def vision_cone(world, coord, direction):
         visible.update(look_until_wall(coord,
                                        Constants.DIFFS[direction]))
 
-    return visible
+    return _visible_world(world, visible)
 
 def network_pack_object(coord, object):
     x,y = coord
@@ -794,9 +814,9 @@ class Game(object):
         join_packet.game_vision = self.vision
 
         direction = player[1]['direction']
-        locations = self._determine_can_see(spawn_coord, direction)
+        visible_world = self._determine_can_see(spawn_coord, direction)
 
-        return [(player_id, join_packet)] + self._send_player_vision(player_id, locations)
+        return [(player_id, join_packet)] + self._send_player_vision(player_id, visible_world)
 
     def player_leave(self, player_id):
         assert player_id in self.players
@@ -809,12 +829,14 @@ class Game(object):
         return self._mark_dirty([location])
 
     def _determine_can_see(self, coord, direction):
-        coords = Constants.VISION[self.vision](self.world, coord, direction)
+        vision_func = Constants.VISION[self.vision]
 
-        return coords
+        visible_world = vision_func(self.world, coord, direction)
 
-    def _send_player_vision(self,player_id, locations):
-        location, player = self._find_player(player_id)
+        return visible_world
+
+    def _send_player_vision(self,player_id, visible_world):
+        #location, player = self._find_player(player_id)
 
         packet = packet_pb2.Packet()
         packet.packet_id = get_id('packet')
@@ -824,11 +846,11 @@ class Game(object):
         # Now to pack the objects
         attributes = []
 
-        for coord in locations:
+        for coord in visible_world:
             if coord not in self.world:
                 continue
 
-            for object in self.world[coord]:
+            for object in visible_world[coord]:
                 x,y,obj_type,attribute = network_pack_object(coord,object)
                 if attribute is None:
                     attr_id = -1
@@ -926,9 +948,9 @@ class Game(object):
             dirty_packets = self._mark_dirty([old_location,new_location])
             direction = player[1]['direction']
 
-            new_can_see = self._determine_can_see(new_location, direction)
+            visible_world = self._determine_can_see(new_location, direction)
             new_vision_packets = self._send_player_vision(player_id,
-                                                          new_can_see)
+                                                          visible_world)
             return dirty_packets + new_vision_packets
 
     def _fire(self, player, location, arg):
@@ -953,13 +975,13 @@ class Game(object):
         for player_id in self.players:
             location, playerobj = self._find_player(player_id)
             direction = playerobj[1]['direction']
-            player_vision = self._determine_can_see(location, direction)
+            player_visible_world = self._determine_can_see(location, direction)
 
-            dirty_locations = set(player_vision) & set(coordinates)
+            dirty_locations = set(player_visible_world) & set(coordinates)
 
             if dirty_locations:
                 packets.extend(self._send_player_vision(player_id,
-                                                        dirty_locations))
+                                                        player_visible_world))
 
         return packets
 
