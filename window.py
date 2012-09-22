@@ -28,6 +28,7 @@ def main2(stdscr):
     curses.init_pair(1, curses.COLOR_GREEN, -1)
     curses.init_pair(2, curses.COLOR_RED, -1)
     curses.init_pair(3, curses.COLOR_BLACK, -1)
+    curses.init_pair(4, curses.COLOR_YELLOW, -1)
     stdscr.nodelay(1)
 
     def print(x):
@@ -113,7 +114,8 @@ class GameScene(object):
             Constants.OBJ_HORIZONTAL_WALL: '-',
             Constants.OBJ_VERTICAL_WALL: '|',
             Constants.OBJ_CORNER_WALL: '+',
-            Constants.OBJ_BULLET: ':'}.get(obj,'?')
+            Constants.OBJ_BULLET: ':',
+            Constants.OBJ_EXPLOSION: '*'}.get(obj,'?')
 
         if obj == Constants.OBJ_PLAYER:
             direction = attr['direction']
@@ -136,6 +138,8 @@ class GameScene(object):
                 colour = curses.color_pair(1)
             else:
                 colour = curses.color_pair(2)
+        elif obj == Constants.OBJ_EXPLOSION:
+            colour = curses.color_pair(4)
 
         assert display_chr is not None
 
@@ -170,7 +174,8 @@ class GameScene(object):
             ord('K'): (Constants.CMD_LOOK, Constants.UP),
             ord('L'): (Constants.CMD_LOOK, Constants.RIGHT),
 
-            ord('f'): (Constants.CMD_FIRE, 1)
+            ord('f'): (Constants.CMD_FIRE, Constants.N1),
+            ord('F'): (Constants.CMD_FIRE, Constants.N2),
         }
         if c in cmds:
             cmd = cmds[c]
@@ -804,7 +809,9 @@ class Game(object):
         return self._mark_dirty([location])
 
     def _determine_can_see(self, coord, direction):
-        return Constants.VISION[self.vision](self.world, coord, direction)
+        coords = Constants.VISION[self.vision](self.world, coord, direction)
+
+        return coords
 
     def _send_player_vision(self,player_id, locations):
         location, player = self._find_player(player_id)
@@ -842,7 +849,6 @@ class Game(object):
                 if obj == obj_type:
                     pair = (coord, (obj,attr))
                     locations.append(pair)
-                    break
 
         return locations
 
@@ -930,7 +936,7 @@ class Game(object):
         player_id = player[1]['number']
 
         diff = Constants.DIFFS[direction]
-        bullet_location = (location[0] + diff[0], location[1] + diff[1])
+        bullet_location = location
 
         attr = {'owner': player_id, 'direction':direction, 'size':arg}
         bullet = (Constants.OBJ_BULLET, attr)
@@ -968,11 +974,17 @@ class Game(object):
             # has passed
             return ()
 
-        time_diff = old_time - now
-        time_diff_s = time_diff.seconds + (time_diff.microseconds * 10.0**-6)
+        time_diff = now - old_time
+        time_diff_s = time_diff.seconds + (time_diff.microseconds * (10.0**-6))
 
         dirty_coords = set()
 
+        self._tick_bullets(time_diff_s, dirty_coords)
+        self._tick_explosions(time_diff_s, dirty_coords)
+
+        return self._mark_dirty(dirty_coords)
+
+    def _tick_bullets(self, time_passed, dirty_coords):
         # Pair of (coord, object)
         bullets = self.find_objs(Constants.OBJ_BULLET)
         for coord,object in bullets:
@@ -983,7 +995,7 @@ class Game(object):
             if '_time_remaining' not in attr:
                 attr['_time_remaining'] = speed
 
-            attr['_time_remaining'] -= time_diff_s
+            attr['_time_remaining'] -= time_passed
 
             if attr['_time_remaining'] < 0:
                 attr['_time_remaining'] += speed
@@ -996,12 +1008,42 @@ class Game(object):
                 loc_diff = Constants.DIFFS[object[1]['direction']]
 
                 new_coord = (coord[0] + loc_diff[0], coord[1] + loc_diff[1])
+
                 if new_coord in self.world:
-                    self.world[new_coord].append(object)
-                    dirty_coords.add(new_coord)
+                    exploded = False
+                    for other in list(self.world[new_coord]):
+                        if other[0] in Constants.SOLID_OBJECTS:
+                            # Boom, bullet explodes.
+                            for ex_coord in neighbourhood(new_coord,n=size-1):
+                                if ex_coord not in self.world:
+                                    continue
 
+                                explosion = (Constants.OBJ_EXPLOSION,
+                                             {'_damage':size})
 
-        return self._mark_dirty(dirty_coords)
+                                self.world[ex_coord].append(explosion)
+                                dirty_coords.add(ex_coord)
+                                exploded = True
+
+                        if exploded:
+                            break
+
+                    if not exploded:
+                        # Bullet keeps moving
+                        self.world[new_coord].append(object)
+                        dirty_coords.add(new_coord)
+
+    def _tick_explosions(self, time_passed, dirty_coords):
+        explosions = self.find_objs(Constants.OBJ_EXPLOSION)
+        for coord,object in explosions:
+            attr = object[1]
+            if '_time_left' not in attr:
+                attr['_time_left'] = Constants.EXPLOSION_LIFE
+
+            attr['_time_left'] -= time_passed
+            if attr['_time_left'] < 0:
+                self.world[coord].remove(object)
+                dirty_coords.add(coord)
 
 class Constants:
     # Constants
@@ -1058,11 +1100,13 @@ class Constants:
     OBJ_PLAYER = "player"
     OBJ_EMPTY = "empty"
     OBJ_BULLET = "bullet"
+    OBJ_EXPLOSION = "boom"
 
     WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)
     HISTORICAL_OBJECTS = WALLS + (OBJ_EMPTY,)
     SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
     OPAQUE_OBJECTS = WALLS
+    ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,)
 
     VISION = {
         'basic': vision_basic,
@@ -1070,7 +1114,17 @@ class Constants:
     }
     ATTRIBUTE_KEYS = ("number", "direction", "team", "hp_max", "hp",
                       "max_ammo", "ammo", "owner","size")
-    ATTRIBUTE_CONSTANT_KEYS = ("direction")
+    ATTRIBUTE_CONSTANT_KEYS = ("direction",)
+
+    N1 = 1
+    N2 = 2
+    N3 = 3
+    N4 = 4
+    N5 = 5
+    N6 = 6
+    N7 = 7
+    N8 = 8
+    N9 = 9
 
     BULLET_SPEEDS = {
         1: 0.05,
@@ -1083,6 +1137,7 @@ class Constants:
         8: 0.40,
         9: 0.45,
     }
+    EXPLOSION_LIFE = 0.5
     KEEPALIVE_TIME = 5
     @classmethod
     def to_numerical_constant(cls,constant):
