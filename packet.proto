@@ -55,6 +55,7 @@ message Packet {
         optional int32 ammo = 7;
         optional int32 owner = 8;
         optional int32 size = 9;
+        optional bool historical = 10;
     }
     repeated Attribute attributes = 602;
 

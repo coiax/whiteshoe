@@ -359,6 +359,10 @@ class ClientNetwork(object):
                 self.known_world[x,y] = []
                 cleared.add((x,y))
 
+            if obj_type == -1:
+                # An obj_type of -1 merely clears the (x,y) cell
+                continue
+
             self.known_world[x,y].append((obj_type, attr))
 
     def _keep_alive(self, packet, addr):
@@ -772,6 +776,7 @@ class Game(object):
         self.vision = vision
 
         self.players = []
+        self.known_worlds = {}
 
         self.last_tick = None
 
@@ -785,6 +790,8 @@ class Game(object):
     def player_join(self,player_id):
         assert player_id not in self.players
         self.players.append(player_id)
+        self.known_worlds[player_id] = {}
+
 
         # Find location for player to spawn
         empty_locations = self.find_obj_locations(Constants.OBJ_EMPTY)
@@ -816,13 +823,62 @@ class Game(object):
         direction = player[1]['direction']
         visible_world = self._determine_can_see(spawn_coord, direction)
 
-        return [(player_id, join_packet)] + self._send_player_vision(player_id, visible_world)
+        changed_coords = self._update_known_world(player_id, visible_world)
+
+        packets = [(player_id, join_packet)]
+        packets.extend(self._send_player_vision(player_id, changed_coords))
+
+        return packets
+
+    def _update_known_world(self, player_id, visible_world):
+        known_world = self.known_worlds[player_id]
+        changed_coords = set()
+
+        for coord, objects in visible_world.items():
+            changed_coords.add(coord)
+
+            if coord not in known_world or known_world[coord] == []:
+                known_world[coord] = list(objects)
+                continue
+
+            visible_obj_tags = [obj[0] for obj in objects]
+            historical_visible = any(tag in Constants.HISTORICAL_OBJECTS
+                                     for tag in visible_obj_tags)
+
+            visible_obj_tags = [obj[0] for obj in known_world[coord]]
+            historical_known = any(obj[0] in Constants.HISTORICAL_OBJECTS
+                                   for obj in known_world[coord])
+
+            if historical_visible and historical_known:
+                # Remove all historical objects from known
+                # before adding visible objects
+                for obj,attr in list(known_world[coord]):
+                    if attr.get('historical', False):
+                        known_world[coord].remove((obj,attr))
+
+            known_world[coord].extend(objects)
+
+        # Now, historical decay
+        coords = set(known_world) - set(visible_world)
+        for coord in coords:
+            for obj,attr in list(known_world[coord]):
+                if obj in Constants.HISTORICAL_OBJECTS:
+                    if attr.get('historical', False):
+                        attr['historical'] = True
+                        changed_coords.add(coord)
+                else:
+                    known_world[coord].remove((obj,attr))
+                    changed_coords.add(coord)
+
+        return changed_coords
 
     def player_leave(self, player_id):
         assert player_id in self.players
-        location, player = self._find_player(player_id)
 
+        location, player = self._find_player(player_id)
         self.world[location].remove(player)
+
+        del self.known_worlds[player_id]
         self.players.remove(player_id)
 
         # Later, we might make them blow up
@@ -835,7 +891,7 @@ class Game(object):
 
         return visible_world
 
-    def _send_player_vision(self,player_id, visible_world):
+    def _send_player_vision(self,player_id, coords):
         #location, player = self._find_player(player_id)
 
         packet = packet_pb2.Packet()
@@ -843,22 +899,31 @@ class Game(object):
         packet.payload_types.append(Constants.VISION_UPDATE)
         packet.vision_game_id = self.id
 
+        known_world = self.known_worlds[player_id]
+
         # Now to pack the objects
         attributes = []
 
-        for coord in visible_world:
+        for coord in coords:
             if coord not in self.world:
                 continue
 
-            for object in visible_world[coord]:
-                x,y,obj_type,attribute = network_pack_object(coord,object)
-                if attribute is None:
-                    attr_id = -1
-                else:
-                    attributes.append(attribute)
-                    attr_id = len(attributes) - 1
-
+            if known_world[coord] == []:
+                x,y = coord
+                obj_type = -1
+                attr_id = -1
                 packet.objects.extend([x,y,obj_type,attr_id])
+
+            else:
+                for object in known_world[coord]:
+                    x,y,obj_type,attribute = network_pack_object(coord,object)
+                    if attribute is None:
+                        attr_id = -1
+                    else:
+                        attributes.append(attribute)
+                        attr_id = len(attributes) - 1
+
+                    packet.objects.extend([x,y,obj_type,attr_id])
 
         packet.attributes.extend(attributes)
 
@@ -969,8 +1034,6 @@ class Game(object):
 
 
     def _mark_dirty(self, coordinates):
-        # Vision is assumed to be reciprical, so if a player is in
-        # sight of a dirty coordinate, then he needs to be updated
         packets = []
         for player_id in self.players:
             location, playerobj = self._find_player(player_id)
@@ -1129,6 +1192,8 @@ class Constants:
     SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
     OPAQUE_OBJECTS = WALLS
     ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,)
+
+    VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET)
 
     VISION = {
         'basic': vision_basic,
