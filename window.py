@@ -12,6 +12,8 @@ import sys
 import traceback
 import collections
 import datetime
+import code
+import readline
 
 import packet_pb2
 
@@ -29,6 +31,7 @@ def main2(stdscr):
     curses.init_pair(2, curses.COLOR_RED, -1)
     curses.init_pair(3, curses.COLOR_BLACK, -1)
     curses.init_pair(4, curses.COLOR_YELLOW, -1)
+    curses.init_pair(5, curses.COLOR_MAGENTA, -1)
     stdscr.nodelay(1)
 
     def print(x):
@@ -46,6 +49,7 @@ def main2(stdscr):
             # non-blocking
             c = stdscr.getch()
             if c != curses.ERR:
+                # 27 is the <ESC> key
                 if c == 27:
                     raise CloseProgram
                 else:
@@ -61,6 +65,29 @@ def main2(stdscr):
         except KeyboardInterrupt:
             break
 
+class ConsoleScene(object):
+    def __init__(self, data):
+        self.data = data
+        self.network = self.data['network']
+
+    def tick(self, stdscr):
+        # We're not actually going to use the main framework at all
+        curses.nocbreak()
+        stdscr.keypad(0)
+        curses.echo()
+        curses.endwin()
+
+        code.interact("Whiteshoe Python Console",raw_input,locals())
+
+        curses.initscr()
+        curses.noecho()
+        curses.cbreak()
+        stdscr.keypad(1)
+
+        raise NewScene(GameScene(self.data))
+
+    def input(self, stdscr, c):
+        pass
 
 
 class GameScene(object):
@@ -79,12 +106,15 @@ class GameScene(object):
 
         for coord, objects in visible.items():
             x,y = coord
-            for o in objects:
-                display_chr, colour = self.display_character(o)
-            try:
-                stdscr.addstr(y,x,display_chr, colour)
-            except curses.error:
-                pass
+            if objects:
+                for o in objects:
+                    display_chr, colour = self.display_character(o)
+                try:
+                    stdscr.addstr(y,x,display_chr, colour)
+                except curses.error:
+                    pass
+            else:
+                stdscr.addstr(y,x,"?",curses.color_pair(5) | curses.A_BOLD)
 
         x,y = my_coord
         stdscr.move(y,x)
@@ -168,7 +198,9 @@ class GameScene(object):
             ord('f'): (Constants.CMD_FIRE, Constants.N1),
             ord('F'): (Constants.CMD_FIRE, Constants.N2),
         }
-        if c in cmds:
+        if c == ord('c'):
+            raise NewScene(ConsoleScene(self.data))
+        elif c in cmds:
             cmd = cmds[c]
             self.network.send_command(cmd[0], cmd[1])
 
@@ -319,7 +351,7 @@ class ClientNetwork(object):
 
         for x,y,obj_type,attr_id in grouper(4, packet.objects):
             assert None not in (x,y,obj_type,attr_id)
-            obj_type = Constants.from_numerical_constant(obj_type)
+
             if attr_id == -1:
                 attr = {}
             else:
@@ -332,6 +364,8 @@ class ClientNetwork(object):
             if obj_type == -1:
                 # An obj_type of -1 merely clears the (x,y) cell
                 continue
+
+            obj_type = Constants.from_numerical_constant(obj_type)
 
             self.known_world[x,y].append((obj_type, attr))
 
