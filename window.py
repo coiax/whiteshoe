@@ -714,8 +714,6 @@ def network_pack_object(coord, object):
         attribute = None
     else:
         attribute = packet_pb2.Packet.Attribute()
-        keys = ["number", "direction", "team", "hp_max", "hp", "max_ammo",
-                "ammo","owner"]
         for key in Constants.ATTRIBUTE_KEYS:
             if key in obj_attr:
                 value = obj_attr[key]
@@ -724,6 +722,16 @@ def network_pack_object(coord, object):
                 setattr(attribute, key, value)
 
     return x,y,obj_type,attribute
+
+def pack_attribute(obj_attr):
+    attribute = packet_pb2.Packet.Attribute()
+    for key in Constants.ATTRIBUTE_KEYS:
+        if key in obj_attr:
+            value = obj_attr[key]
+            if key in Constants.ATTRIBUTE_CONSTANT_KEYS:
+                value = Constants.to_numerical_constant(value)
+            setattr(attribute, key, value)
+    return attribute
 
 class Game(object):
     MAP_GENERATORS = {
@@ -808,7 +816,10 @@ class Game(object):
 
         for coord, objects in visible_world.items():
             changed_coords.add(coord)
+            known_world[coord] = []
+            known_world[coord].extend(objects)
 
+            """
             if coord not in known_world or known_world[coord] == []:
                 known_world[coord] = list(objects)
                 continue
@@ -827,8 +838,7 @@ class Game(object):
                 for obj,attr in list(known_world[coord]):
                     if attr.get('historical', False):
                         known_world[coord].remove((obj,attr))
-
-            known_world[coord].extend(objects)
+            """
 
         # Now, historical decay
         coords = set(known_world) - set(visible_world)
@@ -888,16 +898,27 @@ class Game(object):
 
             else:
                 for object in known_world[coord]:
-                    x,y,obj_type,attribute = network_pack_object(coord,object)
-                    if attribute is None:
+                    x,y = coord
+                    obj_type, obj_attr = object
+                    obj_type = Constants.to_numerical_constant(obj_type)
+                    if obj_attr == {}:
                         attr_id = -1
                     else:
-                        attributes.append(attribute)
-                        attr_id = len(attributes) - 1
+                        attr_id = None
+                        for attr, packed_attr in attributes:
+                            if attr == obj_attr:
+                                attr_id = attributes.index((attr, packed_attr))
+
+                        if attr_id is None:
+                            # No existing attribute dict exists
+                            packed = pack_attribute(obj_attr)
+                            attributes.append((obj_attr, packed))
+                            attr_id = len(attributes) - 1
 
                     packet.objects.extend([x,y,obj_type,attr_id])
 
-        packet.attributes.extend(attributes)
+        for obj_attr, packed in attributes:
+            packet.attributes.extend([packed])
 
         return [(player_id, packet)]
 
@@ -1175,7 +1196,7 @@ class Constants:
         'cone': vision_cone,
     }
     ATTRIBUTE_KEYS = ("number", "direction", "team", "hp_max", "hp",
-                      "max_ammo", "ammo", "owner","size")
+                      "max_ammo", "ammo", "owner","size","historical")
     ATTRIBUTE_CONSTANT_KEYS = ("direction",)
 
     N1 = 1
