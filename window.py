@@ -69,22 +69,13 @@ class GameScene(object):
         self.network = data['network']
     def tick(self, stdscr):
         self.network.update()
-        visible, history = self.network.get_visible()
+        visible = self.network.get_visible()
 
         # TODO currently window viewport is based on the 0,0 topleft
         # corner, and we want to be able to move around
         stdscr.clear()
 
         my_coord, player = self.network.find_me()
-
-        for coord, objects in history.items():
-            x,y = coord
-            for o in objects:
-                display_chr, colour = self.display_character(o,history=True)
-            try:
-                stdscr.addstr(y,x,display_chr, colour)
-            except curses.error:
-                pass
 
         for coord, objects in visible.items():
             x,y = coord
@@ -143,7 +134,7 @@ class GameScene(object):
 
         assert display_chr is not None
 
-        if history:
+        if attr.get('historical', False):
             # Grey
             colour = curses.color_pair(3)
 
@@ -287,28 +278,7 @@ class ClientNetwork(object):
         return (0,0), [Constants.OBJ_PLAYER, {}]
 
     def get_visible(self):
-        player_location, player = self.find_me()
-
-        if self.vision is not None:
-            direction = player[1].get('direction',Constants.RIGHT)
-            visible_world = Constants.VISION[self.vision](self.known_world,
-                                                    player_location,direction)
-            can_see = set(visible_world)
-        else:
-            can_see = list(self.known_world)
-
-        visible = {}
-        history = collections.defaultdict(list)
-
-        for coord, objects in self.known_world.items():
-            if coord in can_see:
-                visible[coord] = objects
-            else:
-                for obj in objects:
-                    if obj[0] in Constants.HISTORICAL_OBJECTS:
-                        history[coord].append(obj)
-
-        return visible, history
+        return self.known_world
 
     # packet handlers
     def _games_running(self, packet, addr):
@@ -680,16 +650,18 @@ def _visible_world(world, visible):
         if coord not in world:
             continue
 
-        visible = []
-        visible.extend(world[coord])
-        visible_world[coord] = visible
+        visible_objects = []
+        for obj,attr in world[coord]:
+            visible_objects.append((obj,dict(attr)))
+
+        visible_world[coord] = visible_objects
 
     for coord, objects in world.items():
         for obj,attr in objects:
             if obj in Constants.ALWAYS_VISIBLE_OBJECTS:
                 if coord not in visible_world:
                     visible_world[coord] = []
-                visible_world[coord].append((obj,attr))
+                visible_world[coord].append((obj,dict(attr)))
     return visible_world
 
 def vision_basic(world, start_coord, direction):
@@ -863,9 +835,9 @@ class Game(object):
         for coord in coords:
             for obj,attr in list(known_world[coord]):
                 if obj in Constants.HISTORICAL_OBJECTS:
-                    if attr.get('historical', False):
-                        attr['historical'] = True
+                    if attr.get('historical',False) != True:
                         changed_coords.add(coord)
+                    attr['historical'] = True
                 else:
                     known_world[coord].remove((obj,attr))
                     changed_coords.add(coord)
@@ -1038,13 +1010,16 @@ class Game(object):
         for player_id in self.players:
             location, playerobj = self._find_player(player_id)
             direction = playerobj[1]['direction']
-            player_visible_world = self._determine_can_see(location, direction)
 
-            dirty_locations = set(player_visible_world) & set(coordinates)
+            visible_world = self._determine_can_see(location, direction)
+
+            dirty_locations = set(visible_world) & set(coordinates)
 
             if dirty_locations:
+                changed_coords = self._update_known_world(player_id,
+                                                          visible_world)
                 packets.extend(self._send_player_vision(player_id,
-                                                        player_visible_world))
+                                                        changed_coords))
 
         return packets
 
@@ -1228,13 +1203,15 @@ class Constants:
     KEEPALIVE_TIME = 5
     @classmethod
     def to_numerical_constant(cls,constant):
-        constants = list(vars(cls).values())
-        constants.sort()
+        constants = vars(cls).items()
+        constants.sort(key=operator.itemgetter(0))
+        constants = [c[1] for c in constants]
         return constants.index(constant)
     @classmethod
     def from_numerical_constant(cls,number):
-        constants = list(vars(cls).values())
-        constants.sort()
+        constants = vars(cls).items()
+        constants.sort(key=operator.itemgetter(0))
+        constants = [c[1] for c in constants]
         return constants[number]
 
 
