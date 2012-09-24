@@ -114,7 +114,14 @@ class GameScene(object):
                 except curses.error:
                     pass
             else:
-                stdscr.addstr(y,x,"?",curses.color_pair(5) | curses.A_BOLD)
+                # A bold purple ? mark indicates a coordinate that is
+                # in the known_world, but has no objects, meaning it has
+                # been explicitly cleared by the network.
+                #
+                # This is an artifact that may or may not be present
+                # as stuff changes.
+                #stdscr.addstr(y,x,"?",curses.color_pair(5) | curses.A_BOLD)
+                pass
 
         x,y = my_coord
         stdscr.move(y,x)
@@ -848,10 +855,46 @@ class Game(object):
         known_world = self.known_worlds[player_id]
         changed_coords = set()
 
-        for coord, objects in visible_world.items():
-            changed_coords.add(coord)
-            known_world[coord] = []
-            known_world[coord].extend(objects)
+        # Decay the things we have in vision
+        for coord in set(visible_world):
+            if coord not in known_world:
+                continue
+            for obj,attr in list(known_world[coord]):
+                if obj in Constants.HISTORICAL_OBJECTS:
+                    if attr.get('historical',False) != True:
+                        changed_coords.add(coord)
+                    attr['historical'] = True
+                else:
+                    known_world[coord].remove((obj,attr))
+                    changed_coords.add(coord)
+
+        for coord, visible_objects in visible_world.items():
+            known_objects = known_world.get(coord,[])
+
+            # We will compare these two later
+            start_state = list(known_objects)
+            new_state = list(known_objects)
+
+            historical_known = [o for o in known_objects
+                                if o[0] in Constants.HISTORICAL_OBJECTS]
+
+            historical_visibles = [o for o in visible_objects
+                                   if o[0] in Constants.HISTORICAL_OBJECTS]
+
+            if historical_visibles:
+                for known in historical_known:
+                    new_state.remove(known)
+
+            for object in visible_objects:
+                new_state.append(object)
+
+            if start_state != new_state:
+                changed_coords.add(coord)
+                known_world[coord] = new_state
+
+            #known_world[coord] = []
+            #known_world[coord].extend(objects)
+
 
             """
             if coord not in known_world or known_world[coord] == []:
@@ -1068,13 +1111,20 @@ class Game(object):
 
             visible_world = self._determine_can_see(location, direction)
 
-            dirty_locations = set(visible_world) & set(coordinates)
+            #dirty_locations = set(visible_world) & set(coordinates)
+            #if dirty_locations:
+            # This dirty locations stuff should be replaced with a
+            # method checking the difference between the old known world
+            # and the new known world, and then updating the player
+            # about that
 
-            if dirty_locations:
-                changed_coords = self._update_known_world(player_id,
-                                                          visible_world)
-                packets.extend(self._send_player_vision(player_id,
-                                                        changed_coords))
+            # To provide good (rather than correct) behaviour, the server
+            # will now just scream vision packets at clients
+
+            changed_coords = self._update_known_world(player_id,
+                                                      visible_world)
+            packets.extend(self._send_player_vision(player_id,
+                                                    changed_coords))
 
         return packets
 
