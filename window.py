@@ -1097,7 +1097,10 @@ class Game(object):
         self._tick_bullets(time_diff_s, dirty_coords)
         self._tick_explosions(time_diff_s, dirty_coords)
 
-        return self._mark_dirty(dirty_coords)
+        if dirty_coords:
+            return self._mark_dirty(dirty_coords)
+        else:
+            return ()
 
     def _tick_bullets(self, time_passed, dirty_coords):
         # Pair of (coord, object)
