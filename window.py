@@ -1249,6 +1249,8 @@ class Game(object):
                         if not non_explosions:
                             empty = (Constants.OBJ_EMPTY, {})
                             self.world[coord].insert(0,empty)
+                    else:
+                        object[1]['hp'] = hp
 
 
             attr['_time_left'] -= time_passed
