@@ -836,10 +836,14 @@ class Game(object):
         suitable = set(empty_locations) - set(player_locations)
         spawn_coord = random.choice(list(suitable))
 
+        start_max_hp = 10
+
         player = (Constants.OBJ_PLAYER,
                   {'number':player_id,
                    'direction': Constants.RIGHT,
-                   'team':player_id})
+                   'team':player_id,
+                   'hp':start_max_hp,
+                   'hp_max': start_max_hp})
 
         self.world[spawn_coord].append(player)
 
@@ -1202,7 +1206,7 @@ class Game(object):
                                     continue
 
                                 explosion = (Constants.OBJ_EXPLOSION,
-                                             {'_damage':size})
+                                             {'_damage':size**2})
 
                                 self.world[ex_coord].append(explosion)
                                 dirty_coords.add(ex_coord)
@@ -1218,14 +1222,38 @@ class Game(object):
 
     def _tick_explosions(self, time_passed, dirty_coords):
         explosions = self.find_objs(Constants.OBJ_EXPLOSION)
-        for coord,object in explosions:
-            attr = object[1]
+        for coord,bullet in explosions:
+            attr = bullet[1]
             if '_time_left' not in attr:
                 attr['_time_left'] = Constants.EXPLOSION_LIFE
+            if '_damaged' not in attr:
+                attr['_damaged'] = []
+
+            for object in list(self.world[coord]):
+                if object[0] in Constants.BLOWABLE_UP:
+                    if object in attr['_damaged']:
+                        continue
+                    else:
+                        attr['_damaged'].append(object)
+
+                    hp = object[1].get('hp', 0)
+                    hp -= attr['_damage']
+
+                    if hp <= 0:
+                        self.world[coord].remove(object)
+                        dirty_coords.add(coord)
+
+                        non_explosions = [o for o in self.world[coord]
+                                          if o[0] != Constants.OBJ_EXPLOSION]
+
+                        if not non_explosions:
+                            empty = (Constants.OBJ_EMPTY, {})
+                            self.world[coord].insert(0,empty)
+
 
             attr['_time_left'] -= time_passed
             if attr['_time_left'] < 0:
-                self.world[coord].remove(object)
+                self.world[coord].remove(bullet)
                 dirty_coords.add(coord)
 
 class Constants:
@@ -1292,6 +1320,7 @@ class Constants:
     ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,)
 
     VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET)
+    BLOWABLE_UP = WALLS + (OBJ_PLAYER,)
 
     VISION = {
         'basic': vision_basic,
