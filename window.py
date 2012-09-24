@@ -32,6 +32,9 @@ def main2(stdscr):
     curses.init_pair(3, curses.COLOR_BLACK, -1)
     curses.init_pair(4, curses.COLOR_YELLOW, -1)
     curses.init_pair(5, curses.COLOR_MAGENTA, -1)
+    curses.init_pair(6, curses.COLOR_CYAN, -1)
+    curses.init_pair(7, curses.COLOR_WHITE, -1)
+    curses.init_pair(8, curses.COLOR_BLUE, -1)
     stdscr.nodelay(1)
 
     def print(x):
@@ -40,6 +43,7 @@ def main2(stdscr):
 
     data = {}
     data['network'] = ClientNetwork(autojoin=('::1',None),automake=True)
+    data['hallu'] = False
 
     scene = GameScene(data)
     while True:
@@ -77,7 +81,13 @@ class ConsoleScene(object):
         curses.echo()
         curses.endwin()
 
-        code.interact("Whiteshoe Python Console",raw_input,locals())
+        our_locals = {
+            'update': self.network.update,
+            'network': self.network,
+            'data': self.data
+        }
+
+        code.interact("Whiteshoe Python Console",raw_input,our_locals)
 
         curses.initscr()
         curses.noecho()
@@ -174,6 +184,9 @@ class GameScene(object):
         if attr.get('historical', False):
             # Grey
             colour = curses.color_pair(3)
+
+        if self.data.get('hallu', False):
+            colour = curses.color_pair(random.randint(1,8))
 
         return display_chr, colour
 
