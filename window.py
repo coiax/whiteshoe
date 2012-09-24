@@ -289,6 +289,8 @@ class ClientNetwork(object):
     def _send_packets(self, packets, addr):
         for packet in packets:
             self.socket.sendto(packet.SerializeToString(), addr)
+        # Don't need to keepalive if we're sending other packets
+        self.keepalive_timer = 0
 
     def send_command(self,cmd,arg):
         cmd_num = Constants.to_numerical_constant(cmd)
