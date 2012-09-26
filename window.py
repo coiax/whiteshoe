@@ -869,12 +869,13 @@ class Game(object):
             suitable -= set(self.find_obj_locations(obj_type))
 
         spawn_coord = random.choice(list(suitable))
+        direction = random.choice(Constants.DIRECTIONS)
 
         start_max_hp = 10
 
         player = (Constants.OBJ_PLAYER,
                   {'number':player_id,
-                   'direction': Constants.RIGHT,
+                   'direction': direction,
                    'team':player_id,
                    'hp':start_max_hp,
                    'hp_max': start_max_hp})
@@ -1338,6 +1339,8 @@ class Constants:
     SOUTHWEST = "sw"
     LEFT = "left"
     RIGHT = "right"
+
+    DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
 
     DIFFS = {
         UP: (0, -1),
