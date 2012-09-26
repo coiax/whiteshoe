@@ -851,17 +851,21 @@ class Game(object):
     def is_player_in_game(self,player_id):
         return player_id in self.players
 
-    def player_join(self,player_id):
-        assert player_id not in self.players
-        self.players.append(player_id)
-        self.known_worlds[player_id] = {}
-
+    def _spawn_player(self, player_id):
+        try:
+            location, player_obj = self._find_player(player_id)
+        except PlayerNotFound:
+            # this is what we expect
+            pass
+        else:
+            # If the player is alive, then he gonna be removed
+            self._remove_player(player_id)
 
         # Find location for player to spawn
-        empty_locations = self.find_obj_locations(Constants.OBJ_EMPTY)
-        player_locations = self.find_obj_locations(Constants.OBJ_PLAYER)
+        suitable = set(self.world)
+        for obj_type in Constants.SOLID_OBJECTS:
+            suitable -= set(self.find_obj_locations(obj_type))
 
-        suitable = set(empty_locations) - set(player_locations)
         spawn_coord = random.choice(list(suitable))
 
         start_max_hp = 10
@@ -874,6 +878,29 @@ class Game(object):
                    'hp_max': start_max_hp})
 
         self.world[spawn_coord].append(player)
+
+        dirty = [spawn_coord]
+        return dirty
+
+    def _remove_player(self, player_id):
+        location, player = self._find_player(player_id)
+        self.world[location].remove(player)
+
+        return self._mark_dirty([location])
+
+    def _kill_player(self, player_id):
+        self._remove_player(player_id)
+        self.known_worlds[player_id] = {}
+        self._spawn_player(player_id)
+
+    def player_join(self,player_id):
+        assert player_id not in self.players
+        self.players.append(player_id)
+        self.known_worlds[player_id] = {}
+
+        dirty = self._spawn_player(player_id)
+        location, player = self._find_player(player_id)
+
 
         join_packet = packet_pb2.Packet()
         join_packet.packet_id = get_id('packet')
@@ -889,12 +916,13 @@ class Game(object):
         join_packet.game_vision = self.vision
 
         direction = player[1]['direction']
-        visible_world = self._determine_can_see(spawn_coord, direction)
+        visible_world = self._determine_can_see(location, direction)
 
         changed_coords = self._update_known_world(player_id, visible_world)
 
         packets = [(player_id, join_packet)]
         packets.extend(self._send_player_vision(player_id, changed_coords))
+        packets.extend(self._mark_dirty(dirty))
 
         return packets
 
@@ -981,14 +1009,17 @@ class Game(object):
     def player_leave(self, player_id):
         assert player_id in self.players
 
-        location, player = self._find_player(player_id)
-        self.world[location].remove(player)
+        try:
+            location, player = self._find_player(player_id)
+        except PlayerNotFound:
+            packets = []
+        else:
+            packets = self._remove_player(player_id)
 
         del self.known_worlds[player_id]
         self.players.remove(player_id)
 
-        # Later, we might make them blow up
-        return self._mark_dirty([location])
+        return packets
 
     def _determine_can_see(self, coord, direction):
         vision_func = Constants.VISION[self.vision]
@@ -1074,9 +1105,13 @@ class Game(object):
             if location is not None:
                 break
 
-        assert location is not None
+        if location is None:
+            raise PlayerNotFound
 
         return location, player
+
+    def _player_death(self, player_id):
+        location, player = self._find_player(player_id)
 
     def player_action(self, player_id, action, argument):
         assert player_id in self.players
@@ -1084,7 +1119,11 @@ class Game(object):
         cmd = Constants.from_numerical_constant(action)
         arg = Constants.from_numerical_constant(argument)
 
-        location, player = self._find_player(player_id)
+        try:
+            location, player = self._find_player(player_id)
+        except PlayerNotFound:
+            location = None
+            player = None
 
         handlers = {
             Constants.CMD_LOOK: self._look,
@@ -1117,7 +1156,6 @@ class Game(object):
                 if obj in Constants.SOLID_OBJECTS:
                     can_move = False
                     break
-
 
 
         if not can_move:
@@ -1153,7 +1191,13 @@ class Game(object):
     def _mark_dirty(self, coordinates):
         packets = []
         for player_id in self.players:
-            location, playerobj = self._find_player(player_id)
+            try:
+                location, playerobj = self._find_player(player_id)
+            except PlayerNotFound:
+                # If player isn't present in the map, then we don't have
+                # to worry about vision for them
+                continue
+
             direction = playerobj[1]['direction']
 
             visible_world = self._determine_can_see(location, direction)
@@ -1268,7 +1312,12 @@ class Game(object):
                     hp -= attr['_damage']
 
                     if hp <= 0:
-                        self.world[coord].remove(object)
+                        if object[0] != Constants.OBJ_PLAYER:
+                            self.world[coord].remove(object)
+                        else:
+                            player_id = object[1]['number']
+                            self._kill_player(player_id)
+
                         dirty_coords.add(coord)
 
                         non_explosions = [o for o in self.world[coord]
@@ -1351,6 +1400,7 @@ class Constants:
 
     VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET)
     BLOWABLE_UP = WALLS + (OBJ_PLAYER,)
+    CAN_STAB = (OBJ_PLAYER,)
 
     VISION = {
         'basic': vision_basic,
@@ -1401,6 +1451,9 @@ class NewScene(Exception):
     pass
 
 class CloseProgram(Exception):
+    pass
+
+class PlayerNotFound(Exception):
     pass
 
 if __name__=='__main__':
