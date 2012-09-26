@@ -1230,7 +1230,7 @@ class Game(object):
                 attr['_time_remaining'] = speed
 
             attr['_time_remaining'] -= time_passed
-
+            # TODO, currently a bullet can move only 1 square per tick
             if attr['_time_remaining'] < 0:
                 attr['_time_remaining'] += speed
 
