@@ -26,7 +26,7 @@ def server_main(args):
 def client_main(args):
     curses.wrapper(main2, args)
 
-def main2(stdscr, arguments=()):
+def main2(stdscr, arguments):
     p = argparse.ArgumentParser()
     p.add_argument('-c','--connect',default="::1")
 
@@ -243,11 +243,19 @@ class ClientNetwork(object):
             Constants.GAME_STATUS: self._game_status,
         }
 
-        self.socket = socket.socket(socket.AF_INET6,socket.SOCK_DGRAM)
-        self.known_world = {}
+        address_type = socket.AF_INET6
 
         if autojoin is not None:
             ip,port = autojoin
+            if '.' in ip:
+                address_type = socket.AF_INET
+            elif ':' in ip:
+                address_type = socket.AF_INET6
+
+        self.socket = socket.socket(address_type,socket.SOCK_DGRAM)
+        self.known_world = {}
+
+        if autojoin is not None:
             if port is None:
                 port = Constants.DEFAULT_PORT
             self._server_addr = (ip, port)
