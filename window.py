@@ -520,7 +520,7 @@ class Server(object):
                     del self.clients[addr]
 
 
-            rlist, wlist, xlist = select.select([self.socket],[],[],0.05)
+            rlist, wlist, xlist = select.select([self.socket],[],[],0.005)
             for rs in rlist:
                 data, addr = rs.recvfrom(4096)
 
