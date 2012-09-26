@@ -239,6 +239,16 @@ class GameScene(object):
 
             ord('f'): (Constants.CMD_FIRE, Constants.N1),
             ord('F'): (Constants.CMD_FIRE, Constants.N2),
+
+            ord('1'): (Constants.CMD_FIRE, Constants.N1),
+            ord('2'): (Constants.CMD_FIRE, Constants.N2),
+            ord('3'): (Constants.CMD_FIRE, Constants.N3),
+            ord('4'): (Constants.CMD_FIRE, Constants.N4),
+            ord('5'): (Constants.CMD_FIRE, Constants.N5),
+            ord('6'): (Constants.CMD_FIRE, Constants.N6),
+            ord('7'): (Constants.CMD_FIRE, Constants.N7),
+            ord('8'): (Constants.CMD_FIRE, Constants.N8),
+            ord('9'): (Constants.CMD_FIRE, Constants.N9),
         }
         if c == ord('c'):
             raise NewScene(ConsoleScene(self.data))
