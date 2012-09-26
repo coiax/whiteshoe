@@ -211,6 +211,12 @@ class GameScene(object):
             ord('k'): (Constants.CMD_MOVE, Constants.UP),
             ord('l'): (Constants.CMD_MOVE, Constants.RIGHT),
 
+            # wasd
+            ord('w'): (Constants.CMD_MOVE, Constants.UP),
+            ord('a'): (Constants.CMD_MOVE, Constants.LEFT),
+            ord('s'): (Constants.CMD_MOVE, Constants.DOWN),
+            ord('d'): (Constants.CMD_MOVE, Constants.RIGHT),
+
             # Looking directions, arrow keys with SHIFT held down
             curses.KEY_SF: (Constants.CMD_LOOK, Constants.DOWN),
             curses.KEY_SR: (Constants.CMD_LOOK, Constants.UP),
@@ -222,6 +228,12 @@ class GameScene(object):
             ord('H'): (Constants.CMD_LOOK, Constants.LEFT),
             ord('K'): (Constants.CMD_LOOK, Constants.UP),
             ord('L'): (Constants.CMD_LOOK, Constants.RIGHT),
+
+            # wasd looking
+            ord('W'): (Constants.CMD_LOOK, Constants.UP),
+            ord('A'): (Constants.CMD_LOOK, Constants.LEFT),
+            ord('S'): (Constants.CMD_LOOK, Constants.DOWN),
+            ord('D'): (Constants.CMD_LOOK, Constants.RIGHT),
 
             ord('f'): (Constants.CMD_FIRE, Constants.N1),
             ord('F'): (Constants.CMD_FIRE, Constants.N2),
