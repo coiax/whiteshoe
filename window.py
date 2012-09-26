@@ -18,14 +18,20 @@ import readline
 import packet_pb2
 
 # mainmethods
-def server_main():
+def server_main(args):
+    # Ignore arguments for now
     s = Server()
     s.serve()
 
-def client_main():
-    curses.wrapper(main2)
+def client_main(args):
+    curses.wrapper(main2, args)
 
-def main2(stdscr):
+def main2(stdscr, arguments=()):
+    p = argparse.ArgumentParser()
+    p.add_argument('-c','--connect',default="::1")
+
+    ns = p.parse_args(arguments)
+
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_GREEN, -1)
     curses.init_pair(2, curses.COLOR_RED, -1)
@@ -41,8 +47,10 @@ def main2(stdscr):
         stdscr.addstr("{0}".format(x), curses.color_pair(0))
         stdscr.refresh()
 
+    autojoin_addr = (ns.connect,None)
+
     data = {}
-    data['network'] = ClientNetwork(autojoin=('::1',None),automake=True)
+    data['network'] = ClientNetwork(autojoin=autojoin_addr,automake=True)
     data['hallu'] = False
 
     scene = GameScene(data)
@@ -1378,8 +1386,8 @@ class CloseProgram(Exception):
 if __name__=='__main__':
     p = argparse.ArgumentParser()
     p.add_argument('-s','--server',action='store_true')
-    args = p.parse_args()
-    if args.server:
-        server_main()
+    namespace, remaining_args  = p.parse_known_args()
+    if namespace.server:
+        server_main(remaining_args)
     else:
-        client_main()
+        client_main(remaining_args)
