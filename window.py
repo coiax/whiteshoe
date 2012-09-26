@@ -319,7 +319,7 @@ class ClientNetwork(object):
             except Exception as e:
                 #traceback.print_exc()
                 # Can't print exceptions when the tty is up
-                pass
+                raise
 
     def _send_keepalive(self):
         p = packet_pb2.Packet()
