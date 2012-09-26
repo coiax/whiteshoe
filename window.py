@@ -967,31 +967,6 @@ class Game(object):
                 changed_coords.add(coord)
                 known_world[coord] = new_state
 
-            #known_world[coord] = []
-            #known_world[coord].extend(objects)
-
-
-            """
-            if coord not in known_world or known_world[coord] == []:
-                known_world[coord] = list(objects)
-                continue
-
-            visible_obj_tags = [obj[0] for obj in objects]
-            historical_visible = any(tag in Constants.HISTORICAL_OBJECTS
-                                     for tag in visible_obj_tags)
-
-            visible_obj_tags = [obj[0] for obj in known_world[coord]]
-            historical_known = any(obj[0] in Constants.HISTORICAL_OBJECTS
-                                   for obj in known_world[coord])
-
-            if historical_visible and historical_known:
-                # Remove all historical objects from known
-                # before adding visible objects
-                for obj,attr in list(known_world[coord]):
-                    if attr.get('historical', False):
-                        known_world[coord].remove((obj,attr))
-            """
-
         # Now, historical decay
         coords = set(known_world) - set(visible_world)
         for coord in coords:
