@@ -56,6 +56,10 @@ def main2(stdscr, arguments):
     scene = GameScene(data)
     while True:
         try:
+            # Calling .tick will make the client network update,
+            # which will use select to check the socket, meaning we sleep
+            # for a small amount of time
+            # So no 100% CPU usage
             scene.tick(stdscr)
 
             # non-blocking
@@ -66,8 +70,6 @@ def main2(stdscr, arguments):
                     raise CloseProgram
                 else:
                     scene.input(stdscr, c)
-
-            time.sleep(0.02)
 
         except NewScene as ns:
             scene = ns[0]
