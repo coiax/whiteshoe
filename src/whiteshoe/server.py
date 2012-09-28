@@ -36,7 +36,7 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        g = Game(vision='cone')
+        g = Game(vision='all')
         self.games.append(g)
 
         self.seen_ids = []
@@ -353,6 +353,10 @@ def vision_cone(world, coord, direction):
 
     return _visible_world(world, visible)
 
+def vision_all(world, coord, direction):
+    visible_coords = set(world)
+    return _visible_world(world, visible_coords)
+
 def network_pack_object(coord, object):
     x,y = coord
     obj_type, obj_attr = object
@@ -390,6 +394,7 @@ class Game(object):
     VISION_FUNCTIONS = {
         'square': vision_square,
         'cone': vision_cone,
+        'all': vision_all,
     }
     def __init__(self,max_players=20,map_generator='purerandom',
                  name='Untitled',mode='ffa',id=None,vision='basic'):
@@ -575,17 +580,24 @@ class Game(object):
     def _send_player_vision(self,player_id, coords):
         #location, player = self._find_player(player_id)
 
-        packet = packet_pb2.Packet()
-        packet.packet_id = get_id('packet')
-        packet.payload_types.append(constants.VISION_UPDATE)
-        packet.vision_game_id = self.id
-
         known_world = self.known_worlds[player_id]
 
-        # Now to pack the objects
-        attributes = []
+        packets = []
+
+        def gen_packet():
+            packet = packet_pb2.Packet()
+            packet.packet_id = get_id('packet')
+            packet.payload_types.append(constants.VISION_UPDATE)
+            packet.vision_game_id = self.id
+            return packet
+
+        current_packet = gen_packet()
 
         for coord in coords:
+            if current_packet.ByteSize() > constants.PACKET_SIZE_LIMIT:
+                packets.append(current_packet)
+                current_packet = gen_packet()
+
             if coord not in self.world:
                 continue
 
@@ -593,7 +605,7 @@ class Game(object):
                 x,y = coord
                 obj_type = -1
                 attr_id = -1
-                packet.objects.extend([x,y,obj_type,attr_id])
+                current_packet.objects.extend([x,y,obj_type,attr_id])
 
             else:
                 for object in known_world[coord]:
@@ -603,23 +615,13 @@ class Game(object):
                     if obj_attr == {}:
                         attr_id = -1
                     else:
-                        attr_id = None
-                        for attr, packed_attr in attributes:
-                            if attr == obj_attr:
-                                attr_id = attributes.index((attr, packed_attr))
+                        packed = pack_attribute(obj_attr)
+                        attr_id = len(current_packet.attributes)
+                        current_packet.attributes.extend([packed])
 
-                        if attr_id is None:
-                            # No existing attribute dict exists
-                            packed = pack_attribute(obj_attr)
-                            attributes.append((obj_attr, packed))
-                            attr_id = len(attributes) - 1
+                    current_packet.objects.extend([x,y,obj_type,attr_id])
 
-                    packet.objects.extend([x,y,obj_type,attr_id])
-
-        for obj_attr, packed in attributes:
-            packet.attributes.extend([packed])
-
-        return [(player_id, packet)]
+        return [(player_id, packet) for packet in packets]
 
     def find_objs(self, obj_type):
         locations = []
@@ -884,3 +886,6 @@ class ServerException(Exception):
 
 class PlayerNotFound(ServerException):
     pass
+
+if __name__=='__main__':
+    server_main()

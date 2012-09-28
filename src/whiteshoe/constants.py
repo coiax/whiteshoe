@@ -40,6 +40,7 @@ class Constants(object):
     del _constants
 
     # Non-network constants after this point
+    PACKET_SIZE_LIMIT = 600
     DEFAULT_PORT = 25008
 
     GET_GAMES_LIST = 0
