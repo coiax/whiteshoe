@@ -110,4 +110,7 @@ class Constants(object):
     def from_numerical_constant(cls,number):
         return cls._constants_table[number]
 
+# This is a Guido approved hack that replaces the module that you're about
+# to import with a class instance, so that our vars() doesn't pick up
+# all the builtin crap
 sys.modules[__name__] = Constants()
