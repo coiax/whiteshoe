@@ -1,4 +1,5 @@
 import itertools
+import math
 
 class IDCounter(object):
     def __init__(self):
@@ -27,3 +28,19 @@ def neighbourhood(coord,n=1):
         for j in range(y-n, y+n+1):
             coords.append((i,j))
     return coords
+
+def bytes_to_human(bytes):
+    # 0 for bytes, 1 for k, 2 for meg, 3 for gig
+    # Thanks to Toby/TheNerd for this function
+    assert bytes >= 0
+    if bytes == 0:
+        return "0B"
+
+    value = int(math.log(bytes,2) // 10)
+    scaled = bytes / float(2**(10*value))
+    suffixes = ["B", "KiB", "MiB", "GiB", "TiB", "FUCK YOU"]
+    if value == 0:
+        fmt = "{0:.0f}{1}"
+    else:
+        fmt = "{0:.2f}{1}"
+    return fmt.format(scaled, suffixes[value])

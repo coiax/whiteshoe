@@ -6,11 +6,11 @@ import socket
 import random
 import itertools
 import traceback
+import sys
 
 import constants
 import packet_pb2
-from exceptions import *
-from utility import neighbourhood, get_id
+from utility import neighbourhood, get_id, bytes_to_human
 
 def server_main(args=None):
     # Ignore arguments for now
@@ -47,6 +47,11 @@ class Server(object):
 
         self.timeout = 30
 
+        self.stats = {'packets_sent':0,
+                      'packets_recieved':0,
+                      'bytes_sent':0,
+                      'bytes_recieved':0}
+
 
     def serve(self):
         self.socket.bind(('',self.port))
@@ -73,11 +78,18 @@ class Server(object):
 
 
             rlist, wlist, xlist = select.select([self.socket],[],[],0.005)
+
+            display_stats(self.stats)
+
+
             for rs in rlist:
                 data, addr = rs.recvfrom(4096)
 
                 try:
                     packet = packet_pb2.Packet.FromString(data)
+                    self.stats['packets_recieved'] += 1
+                    self.stats['bytes_recieved'] += len(data)
+
                     #print("Recv: {}".format(packet))
 
                     if addr not in self.clients:
@@ -112,6 +124,8 @@ class Server(object):
                 if packet_player_id == addr_dict['player_id']:
                     #print("Sent: {}".format(packet))
                     self.socket.sendto(packet.SerializeToString(), addr)
+                    self.stats['packets_sent'] += 1
+                    self.stats['bytes_sent'] += packet.ByteSize()
                     sent = True
                     break
 
@@ -177,6 +191,17 @@ class Server(object):
 
     def _keep_alive(self, packet, addr):
         pass
+
+def display_stats(stats):
+    fmt = "\rNumber Sent: {0}, Number Recieved: {1}, Sent: {2}, Recieved: {3}"
+    s = fmt.format(stats['packets_sent'],
+                   stats['packets_recieved'],
+                   bytes_to_human(stats['bytes_sent']),
+                   bytes_to_human(stats['bytes_recieved']))
+
+    sys.stderr.write(s)
+    sys.stderr.flush()
+
 
 def purerandom_map(X=80,Y=24,seed=0):
     world = {}
