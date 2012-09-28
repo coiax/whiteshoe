@@ -621,6 +621,9 @@ class Game(object):
 
                     current_packet.objects.extend([x,y,obj_type,attr_id])
 
+        #TODO For each packet, make sure that identical Attributes are
+        # compressed down to one, and the corresponding attr_ids are changed.
+
         return [(player_id, packet) for packet in packets]
 
     def find_objs(self, obj_type):
