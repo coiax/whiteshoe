@@ -1,0 +1,4 @@
+#!/usr/bin/python
+import whiteshoe
+
+whiteshoe.client_main()
