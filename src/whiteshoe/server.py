@@ -879,3 +879,8 @@ class Game(object):
                 self.world[coord].remove(bullet)
                 dirty_coords.add(coord)
 
+class ServerException(Exception):
+    pass
+
+class PlayerNotFound(ServerException):
+    pass

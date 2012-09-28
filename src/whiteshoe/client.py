@@ -18,6 +18,7 @@ from exceptions import *
 def client_main(args=None):
     curses.wrapper(main2, args)
 
+
 def main2(stdscr, arguments):
     p = argparse.ArgumentParser()
     p.add_argument('-c','--connect',default="::1")
@@ -434,3 +435,14 @@ class ClientNetwork(object):
         elif packet.status == constants.STATUS_LEFT:
             self.game_id = None
 
+class ClientException(Exception):
+    pass
+
+class NewScene(ClientException):
+    pass
+
+class CloseProgram(ClientException):
+    pass
+
+if __name__=='__main__':
+    client_main()
