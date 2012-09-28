@@ -6,6 +6,9 @@ import socket
 import select
 import datetime
 import time
+import readline
+import code
+import random
 
 import constants
 import packet_pb2
