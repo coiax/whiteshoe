@@ -16,6 +16,7 @@ import code
 import readline
 
 import packet_pb2
+import constants
 
 # mainmethods
 def server_main(args=None):
@@ -156,37 +157,37 @@ class GameScene(object):
         obj, attr = object
 
         display_chr = {
-            Constants.OBJ_WALL: '#',
-            Constants.OBJ_PLAYER: '@',
-            Constants.OBJ_EMPTY: '.',
-            Constants.OBJ_HORIZONTAL_WALL: '-',
-            Constants.OBJ_VERTICAL_WALL: '|',
-            Constants.OBJ_CORNER_WALL: '+',
-            Constants.OBJ_BULLET: ':',
-            Constants.OBJ_EXPLOSION: '*'}.get(obj,'?')
+            constants.OBJ_WALL: '#',
+            constants.OBJ_PLAYER: '@',
+            constants.OBJ_EMPTY: '.',
+            constants.OBJ_HORIZONTAL_WALL: '-',
+            constants.OBJ_VERTICAL_WALL: '|',
+            constants.OBJ_CORNER_WALL: '+',
+            constants.OBJ_BULLET: ':',
+            constants.OBJ_EXPLOSION: '*'}.get(obj,'?')
 
-        if obj == Constants.OBJ_PLAYER:
+        if obj == constants.OBJ_PLAYER:
             direction = attr['direction']
             if attr['number'] == self.network.player_id:
                 colour = curses.color_pair(1)
             else:
                 colour = curses.color_pair(2)
 
-            if direction == Constants.RIGHT:
+            if direction == constants.RIGHT:
                 display_chr = '>'
-            elif direction == Constants.LEFT:
+            elif direction == constants.LEFT:
                 display_chr = '<'
-            elif direction == Constants.UP:
+            elif direction == constants.UP:
                 display_chr = '^'
-            elif direction == Constants.DOWN:
+            elif direction == constants.DOWN:
                 display_chr = 'v'
-        elif obj == Constants.OBJ_BULLET:
+        elif obj == constants.OBJ_BULLET:
             owner = attr['owner']
             if owner == self.network.player_id:
                 colour = curses.color_pair(1)
             else:
                 colour = curses.color_pair(2)
-        elif obj == Constants.OBJ_EXPLOSION:
+        elif obj == constants.OBJ_EXPLOSION:
             colour = curses.color_pair(4)
 
         assert display_chr is not None
@@ -203,52 +204,52 @@ class GameScene(object):
     def input(self, stdscr, c):
         #print(c)
         cmds = {
-            curses.KEY_DOWN: (Constants.CMD_MOVE, Constants.DOWN),
-            curses.KEY_UP: (Constants.CMD_MOVE, Constants.UP),
-            curses.KEY_LEFT: (Constants.CMD_MOVE, Constants.LEFT),
-            curses.KEY_RIGHT: (Constants.CMD_MOVE, Constants.RIGHT),
+            curses.KEY_DOWN: (constants.CMD_MOVE, constants.DOWN),
+            curses.KEY_UP: (constants.CMD_MOVE, constants.UP),
+            curses.KEY_LEFT: (constants.CMD_MOVE, constants.LEFT),
+            curses.KEY_RIGHT: (constants.CMD_MOVE, constants.RIGHT),
             # vim keys
-            ord('j'): (Constants.CMD_MOVE, Constants.DOWN),
-            ord('h'): (Constants.CMD_MOVE, Constants.LEFT),
-            ord('k'): (Constants.CMD_MOVE, Constants.UP),
-            ord('l'): (Constants.CMD_MOVE, Constants.RIGHT),
+            ord('j'): (constants.CMD_MOVE, constants.DOWN),
+            ord('h'): (constants.CMD_MOVE, constants.LEFT),
+            ord('k'): (constants.CMD_MOVE, constants.UP),
+            ord('l'): (constants.CMD_MOVE, constants.RIGHT),
 
             # wasd
-            ord('w'): (Constants.CMD_MOVE, Constants.UP),
-            ord('a'): (Constants.CMD_MOVE, Constants.LEFT),
-            ord('s'): (Constants.CMD_MOVE, Constants.DOWN),
-            ord('d'): (Constants.CMD_MOVE, Constants.RIGHT),
+            ord('w'): (constants.CMD_MOVE, constants.UP),
+            ord('a'): (constants.CMD_MOVE, constants.LEFT),
+            ord('s'): (constants.CMD_MOVE, constants.DOWN),
+            ord('d'): (constants.CMD_MOVE, constants.RIGHT),
 
             # Looking directions, arrow keys with SHIFT held down
-            curses.KEY_SF: (Constants.CMD_LOOK, Constants.DOWN),
-            curses.KEY_SR: (Constants.CMD_LOOK, Constants.UP),
-            curses.KEY_SRIGHT: (Constants.CMD_LOOK, Constants.RIGHT),
-            curses.KEY_SLEFT: (Constants.CMD_LOOK, Constants.LEFT),
+            curses.KEY_SF: (constants.CMD_LOOK, constants.DOWN),
+            curses.KEY_SR: (constants.CMD_LOOK, constants.UP),
+            curses.KEY_SRIGHT: (constants.CMD_LOOK, constants.RIGHT),
+            curses.KEY_SLEFT: (constants.CMD_LOOK, constants.LEFT),
 
             #
-            ord('J'): (Constants.CMD_LOOK, Constants.DOWN),
-            ord('H'): (Constants.CMD_LOOK, Constants.LEFT),
-            ord('K'): (Constants.CMD_LOOK, Constants.UP),
-            ord('L'): (Constants.CMD_LOOK, Constants.RIGHT),
+            ord('J'): (constants.CMD_LOOK, constants.DOWN),
+            ord('H'): (constants.CMD_LOOK, constants.LEFT),
+            ord('K'): (constants.CMD_LOOK, constants.UP),
+            ord('L'): (constants.CMD_LOOK, constants.RIGHT),
 
             # wasd looking
-            ord('W'): (Constants.CMD_LOOK, Constants.UP),
-            ord('A'): (Constants.CMD_LOOK, Constants.LEFT),
-            ord('S'): (Constants.CMD_LOOK, Constants.DOWN),
-            ord('D'): (Constants.CMD_LOOK, Constants.RIGHT),
+            ord('W'): (constants.CMD_LOOK, constants.UP),
+            ord('A'): (constants.CMD_LOOK, constants.LEFT),
+            ord('S'): (constants.CMD_LOOK, constants.DOWN),
+            ord('D'): (constants.CMD_LOOK, constants.RIGHT),
 
-            ord('f'): (Constants.CMD_FIRE, Constants.N1),
-            ord('F'): (Constants.CMD_FIRE, Constants.N2),
+            ord('f'): (constants.CMD_FIRE, constants.N1),
+            ord('F'): (constants.CMD_FIRE, constants.N2),
 
-            ord('1'): (Constants.CMD_FIRE, Constants.N1),
-            ord('2'): (Constants.CMD_FIRE, Constants.N2),
-            ord('3'): (Constants.CMD_FIRE, Constants.N3),
-            ord('4'): (Constants.CMD_FIRE, Constants.N4),
-            ord('5'): (Constants.CMD_FIRE, Constants.N5),
-            ord('6'): (Constants.CMD_FIRE, Constants.N6),
-            ord('7'): (Constants.CMD_FIRE, Constants.N7),
-            ord('8'): (Constants.CMD_FIRE, Constants.N8),
-            ord('9'): (Constants.CMD_FIRE, Constants.N9),
+            ord('1'): (constants.CMD_FIRE, constants.N1),
+            ord('2'): (constants.CMD_FIRE, constants.N2),
+            ord('3'): (constants.CMD_FIRE, constants.N3),
+            ord('4'): (constants.CMD_FIRE, constants.N4),
+            ord('5'): (constants.CMD_FIRE, constants.N5),
+            ord('6'): (constants.CMD_FIRE, constants.N6),
+            ord('7'): (constants.CMD_FIRE, constants.N7),
+            ord('8'): (constants.CMD_FIRE, constants.N8),
+            ord('9'): (constants.CMD_FIRE, constants.N9),
         }
         if c == ord('c'):
             raise NewScene(ConsoleScene(self.data))
@@ -260,11 +261,11 @@ class ClientNetwork(object):
     def __init__(self,autojoin=None,automake=False):
         self.handlers = {
             # c->s get games list
-            Constants.GAMES_RUNNING: self._games_running,
-            Constants.ERROR: self._error,
-            Constants.VISION_UPDATE: self._vision_update,
-            Constants.KEEP_ALIVE: self._keep_alive,
-            Constants.GAME_STATUS: self._game_status,
+            constants.GAMES_RUNNING: self._games_running,
+            constants.ERROR: self._error,
+            constants.VISION_UPDATE: self._vision_update,
+            constants.KEEP_ALIVE: self._keep_alive,
+            constants.GAME_STATUS: self._game_status,
         }
 
         address_type = socket.AF_INET6
@@ -281,12 +282,12 @@ class ClientNetwork(object):
 
         if autojoin is not None:
             if port is None:
-                port = Constants.DEFAULT_PORT
+                port = constants.DEFAULT_PORT
             self._server_addr = (ip, port)
 
             p = packet_pb2.Packet()
             p.packet_id = get_id('packet')
-            p.payload_types.append(Constants.JOIN_GAME)
+            p.payload_types.append(constants.JOIN_GAME)
             p.autojoin = True
 
             self._send_packets([p], self._server_addr)
@@ -310,8 +311,8 @@ class ClientNetwork(object):
 
             self.keepalive_timer += diff.seconds + (diff.microseconds*10.0**-6)
 
-            if self.keepalive_timer > Constants.KEEPALIVE_TIME:
-                self.keepalive_timer -= Constants.KEEPALIVE_TIME
+            if self.keepalive_timer > constants.KEEPALIVE_TIME:
+                self.keepalive_timer -= constants.KEEPALIVE_TIME
 
                 self._send_keepalive()
     def _ticklet(self):
@@ -334,7 +335,7 @@ class ClientNetwork(object):
     def _send_keepalive(self):
         p = packet_pb2.Packet()
         p.packet_id = get_id('packet')
-        p.payload_types.append(Constants.KEEP_ALIVE)
+        p.payload_types.append(constants.KEEP_ALIVE)
         p.timestamp = int(time.time())
 
         self._send_packets([p], self._server_addr)
@@ -346,12 +347,12 @@ class ClientNetwork(object):
         self.keepalive_timer = 0
 
     def send_command(self,cmd,arg):
-        cmd_num = Constants.to_numerical_constant(cmd)
-        arg_num = Constants.to_numerical_constant(arg)
+        cmd_num = constants.to_numerical_constant(cmd)
+        arg_num = constants.to_numerical_constant(arg)
 
         p = packet_pb2.Packet()
         p.packet_id = get_id('packet')
-        p.payload_types.append(Constants.GAME_ACTION)
+        p.payload_types.append(constants.GAME_ACTION)
         # Ah, we need to note the game_id that we're participating in
         p.action_game_id = self.game_id
         p.action = cmd_num
@@ -363,13 +364,13 @@ class ClientNetwork(object):
         if self.player_id is not None:
             for coord, objects in self.known_world.items():
                 for object in objects:
-                    if (object[0] == Constants.OBJ_PLAYER and
+                    if (object[0] == constants.OBJ_PLAYER and
                         object[1]['number'] == self.player_id):
 
                         return coord, object
 
         # Failsafe
-        return (0,0), [Constants.OBJ_PLAYER, {}]
+        return (0,0), [constants.OBJ_PLAYER, {}]
 
     def get_visible(self):
         return self.known_world
@@ -400,11 +401,11 @@ class ClientNetwork(object):
 
         for attribute in packet.attributes:
             unpacked = {}
-            for key in Constants.ATTRIBUTE_KEYS:
+            for key in constants.ATTRIBUTE_KEYS:
                 if attribute.HasField(key):
                     value = getattr(attribute, key)
-                    if key in Constants.ATTRIBUTE_CONSTANT_KEYS:
-                        value = Constants.from_numerical_constant(value)
+                    if key in constants.ATTRIBUTE_CONSTANT_KEYS:
+                        value = constants.from_numerical_constant(value)
                     unpacked[key] = value
 
             unpacked_attributes.append(unpacked)
@@ -427,7 +428,7 @@ class ClientNetwork(object):
                 # An obj_type of -1 merely clears the (x,y) cell
                 continue
 
-            obj_type = Constants.from_numerical_constant(obj_type)
+            obj_type = constants.from_numerical_constant(obj_type)
 
             self.known_world[x,y].append((obj_type, attr))
 
@@ -435,11 +436,11 @@ class ClientNetwork(object):
         pass
 
     def _game_status(self, packet, addr):
-        if packet.status == Constants.STATUS_JOINED:
+        if packet.status == constants.STATUS_JOINED:
             self.game_id = packet.status_game_id
             self.player_id = packet.your_player_id
             self.vision = packet.game_vision
-        elif packet.status == Constants.STATUS_LEFT:
+        elif packet.status == constants.STATUS_LEFT:
             self.game_id = None
 
 
@@ -469,17 +470,17 @@ class Server(object):
 
     def __init__(self):
         self.handlers = {
-            Constants.GET_GAMES_LIST: self._get_games_list,
+            constants.GET_GAMES_LIST: self._get_games_list,
             # games running (s->c)
-            Constants.MAKE_NEW_GAME: self._make_new_game,
-            Constants.ERROR: self._error,
-            Constants.GAME_ACTION: self._game_action,
-            Constants.JOIN_GAME: self._join_game,
+            constants.MAKE_NEW_GAME: self._make_new_game,
+            constants.ERROR: self._error,
+            constants.GAME_ACTION: self._game_action,
+            constants.JOIN_GAME: self._join_game,
             # vision update (s->c)
-            Constants.KEEP_ALIVE: self._keep_alive,
+            constants.KEEP_ALIVE: self._keep_alive,
 
         }
-        self.port = Constants.DEFAULT_PORT
+        self.port = constants.DEFAULT_PORT
 
         self.games = []
 
@@ -567,7 +568,7 @@ class Server(object):
 
     def _get_games_list(self, packet, addr):
         reply = packet_pb2.Packet()
-        reply.payload_types.append(Constants.GAMES_RUNNING)
+        reply.payload_types.append(constants.GAMES_RUNNING)
 
         reply.packet_id = get_id()
 
@@ -632,9 +633,9 @@ def purerandom_map(X=80,Y=24,seed=0):
 
     for i,j in itertools.product(range(X), range(Y)):
         if r.random() < 0.35:
-            world[i,j] = [(Constants.OBJ_WALL, {})]
+            world[i,j] = [(constants.OBJ_WALL, {})]
         else:
-            world[i,j] = [(Constants.OBJ_EMPTY, {})]
+            world[i,j] = [(constants.OBJ_EMPTY, {})]
 
     return world
 
@@ -642,7 +643,7 @@ def empty_map(X=80,Y=24,seed=None):
     world = {}
 
     for i,j in itertools.product(range(X), range(Y)):
-        world[i,j] = [(Constants.OBJ_EMPTY, {})]
+        world[i,j] = [(constants.OBJ_EMPTY, {})]
     return world
 
 def ca_maze_map(X=80,Y=24,seed=1):
@@ -694,9 +695,9 @@ def ca_maze_map(X=80,Y=24,seed=1):
     world = {}
     for coord in ca_world:
         if ca_world[coord]:
-            obj = [(Constants.OBJ_WALL, {})]
+            obj = [(constants.OBJ_WALL, {})]
         else:
-            obj = [(Constants.OBJ_EMPTY, {})]
+            obj = [(constants.OBJ_EMPTY, {})]
 
         world[coord] = obj
 
@@ -704,7 +705,7 @@ def ca_maze_map(X=80,Y=24,seed=1):
 
 def pretty_walls(world):
     for coord, objects in world.items():
-        if objects[0][0] == Constants.OBJ_EMPTY:
+        if objects[0][0] == constants.OBJ_EMPTY:
             continue
 
         vertical = False
@@ -713,14 +714,14 @@ def pretty_walls(world):
         for neighbour in ((coord[0], coord[1] - 1), (coord[0], coord[1] + 1)):
             if neighbour not in world:
                 continue
-            if world[neighbour][0][0] != Constants.OBJ_EMPTY:
+            if world[neighbour][0][0] != constants.OBJ_EMPTY:
                 vertical = True
                 break
 
         for neighbour in ((coord[0] - 1, coord[1]), (coord[0] + 1, coord[1])):
             if neighbour not in world:
                 continue
-            if world[neighbour][0][0] != Constants.OBJ_EMPTY:
+            if world[neighbour][0][0] != constants.OBJ_EMPTY:
                 horizontal = True
                 break
 
@@ -729,13 +730,13 @@ def pretty_walls(world):
             continue
         elif vertical and not horizontal:
             del objects[0]
-            objects.append((Constants.OBJ_VERTICAL_WALL, {}))
+            objects.append((constants.OBJ_VERTICAL_WALL, {}))
         elif not vertical and horizontal:
             del objects[0]
-            objects.append((Constants.OBJ_HORIZONTAL_WALL, {}))
+            objects.append((constants.OBJ_HORIZONTAL_WALL, {}))
         elif vertical and horizontal:
             del objects[0]
-            objects.append((Constants.OBJ_CORNER_WALL, {}))
+            objects.append((constants.OBJ_CORNER_WALL, {}))
 
     return world
 
@@ -754,13 +755,13 @@ def _visible_world(world, visible):
 
     for coord, objects in world.items():
         for obj,attr in objects:
-            if obj in Constants.ALWAYS_VISIBLE_OBJECTS:
+            if obj in constants.ALWAYS_VISIBLE_OBJECTS:
                 if coord not in visible_world:
                     visible_world[coord] = []
                 visible_world[coord].append((obj,dict(attr)))
     return visible_world
 
-def vision_basic(world, start_coord, direction):
+def vision_square(world, start_coord, direction):
     visible = neighbourhood(start_coord, n=3)
     return _visible_world(world, visible)
 
@@ -770,7 +771,7 @@ def vision_cone(world, coord, direction):
     # behind you
     visible.add(coord)
 
-    main_direction = Constants.DIFFS[direction]
+    main_direction = constants.DIFFS[direction]
     behind_you = main_direction[0] * -1, main_direction[1] * -1
 
     visible.add((coord[0] + behind_you[0], coord[1] + behind_you[1]))
@@ -791,41 +792,41 @@ def vision_cone(world, coord, direction):
             v.add(coord)
             objects = world[coord]
             for o in objects:
-                if o[0] in Constants.OPAQUE_OBJECTS:
+                if o[0] in constants.OPAQUE_OBJECTS:
                     running = False
         return v
 
-    for direction in Constants.ADJACENT[direction]:
+    for direction in constants.ADJACENT[direction]:
         visible.update(look_until_wall(coord,
-                                       Constants.DIFFS[direction]))
+                                       constants.DIFFS[direction]))
 
     return _visible_world(world, visible)
 
 def network_pack_object(coord, object):
     x,y = coord
     obj_type, obj_attr = object
-    obj_type = Constants.to_numerical_constant(obj_type)
+    obj_type = constants.to_numerical_constant(obj_type)
 
     if obj_attr == {}:
         attribute = None
     else:
         attribute = packet_pb2.Packet.Attribute()
-        for key in Constants.ATTRIBUTE_KEYS:
+        for key in constants.ATTRIBUTE_KEYS:
             if key in obj_attr:
                 value = obj_attr[key]
-                if key in Constants.ATTRIBUTE_CONSTANT_KEYS:
-                    value = Constants.to_numerical_constant(value)
+                if key in constants.ATTRIBUTE_CONSTANT_KEYS:
+                    value = constants.to_numerical_constant(value)
                 setattr(attribute, key, value)
 
     return x,y,obj_type,attribute
 
 def pack_attribute(obj_attr):
     attribute = packet_pb2.Packet.Attribute()
-    for key in Constants.ATTRIBUTE_KEYS:
+    for key in constants.ATTRIBUTE_KEYS:
         if key in obj_attr:
             value = obj_attr[key]
-            if key in Constants.ATTRIBUTE_CONSTANT_KEYS:
-                value = Constants.to_numerical_constant(value)
+            if key in constants.ATTRIBUTE_CONSTANT_KEYS:
+                value = constants.to_numerical_constant(value)
             setattr(attribute, key, value)
     return attribute
 
@@ -834,6 +835,10 @@ class Game(object):
         'purerandom': purerandom_map,
         'empty': empty_map,
         'ca_maze':ca_maze_map
+    }
+    VISION_FUNCTIONS = {
+        'square': vision_square,
+        'cone': vision_cone,
     }
     def __init__(self,max_players=20,map_generator='purerandom',
                  name='Untitled',mode='ffa',id=None,vision='basic'):
@@ -875,15 +880,15 @@ class Game(object):
 
         # Find location for player to spawn
         suitable = set(self.world)
-        for obj_type in Constants.SOLID_OBJECTS:
+        for obj_type in constants.SOLID_OBJECTS:
             suitable -= set(self.find_obj_locations(obj_type))
 
         spawn_coord = random.choice(list(suitable))
-        direction = random.choice(Constants.DIRECTIONS)
+        direction = random.choice(constants.DIRECTIONS)
 
         start_max_hp = 10
 
-        player = (Constants.OBJ_PLAYER,
+        player = (constants.OBJ_PLAYER,
                   {'number':player_id,
                    'direction': direction,
                    'team':player_id,
@@ -917,10 +922,10 @@ class Game(object):
 
         join_packet = packet_pb2.Packet()
         join_packet.packet_id = get_id('packet')
-        join_packet.payload_types.append(Constants.GAME_STATUS)
+        join_packet.payload_types.append(constants.GAME_STATUS)
 
         join_packet.status_game_id = self.id
-        join_packet.status = Constants.STATUS_JOINED
+        join_packet.status = constants.STATUS_JOINED
         join_packet.your_player_id = player_id
         join_packet.game_name = self.name
         join_packet.game_mode = self.mode
@@ -948,7 +953,7 @@ class Game(object):
             if coord not in known_world:
                 continue
             for obj,attr in list(known_world[coord]):
-                if obj in Constants.HISTORICAL_OBJECTS:
+                if obj in constants.HISTORICAL_OBJECTS:
                     if attr.get('historical',False) != True:
                         changed_coords.add(coord)
                     attr['historical'] = True
@@ -964,10 +969,10 @@ class Game(object):
             new_state = list(known_objects)
 
             historical_known = [o for o in known_objects
-                                if o[0] in Constants.HISTORICAL_OBJECTS]
+                                if o[0] in constants.HISTORICAL_OBJECTS]
 
             historical_visibles = [o for o in visible_objects
-                                   if o[0] in Constants.HISTORICAL_OBJECTS]
+                                   if o[0] in constants.HISTORICAL_OBJECTS]
 
             if historical_visibles:
                 for known in historical_known:
@@ -984,7 +989,7 @@ class Game(object):
         coords = set(known_world) - set(visible_world)
         for coord in coords:
             for obj,attr in list(known_world[coord]):
-                if obj in Constants.HISTORICAL_OBJECTS:
+                if obj in constants.HISTORICAL_OBJECTS:
                     if attr.get('historical',False) != True:
                         changed_coords.add(coord)
                     attr['historical'] = True
@@ -1010,7 +1015,7 @@ class Game(object):
         return packets
 
     def _determine_can_see(self, coord, direction):
-        vision_func = Constants.VISION[self.vision]
+        vision_func = self.VISION_FUNCTIONS[self.vision]
 
         visible_world = vision_func(self.world, coord, direction)
 
@@ -1021,7 +1026,7 @@ class Game(object):
 
         packet = packet_pb2.Packet()
         packet.packet_id = get_id('packet')
-        packet.payload_types.append(Constants.VISION_UPDATE)
+        packet.payload_types.append(constants.VISION_UPDATE)
         packet.vision_game_id = self.id
 
         known_world = self.known_worlds[player_id]
@@ -1043,7 +1048,7 @@ class Game(object):
                 for object in known_world[coord]:
                     x,y = coord
                     obj_type, obj_attr = object
-                    obj_type = Constants.to_numerical_constant(obj_type)
+                    obj_type = constants.to_numerical_constant(obj_type)
                     if obj_attr == {}:
                         attr_id = -1
                     else:
@@ -1085,7 +1090,7 @@ class Game(object):
 
         for coord, objects in self.world.items():
             for obj, attr in objects:
-                if obj == Constants.OBJ_PLAYER and attr['number'] == number:
+                if obj == constants.OBJ_PLAYER and attr['number'] == number:
                     player = (obj, attr)
                     location = coord
                     break
@@ -1104,8 +1109,8 @@ class Game(object):
     def player_action(self, player_id, action, argument):
         assert player_id in self.players
         # Translate into internal constants
-        cmd = Constants.from_numerical_constant(action)
-        arg = Constants.from_numerical_constant(argument)
+        cmd = constants.from_numerical_constant(action)
+        arg = constants.from_numerical_constant(argument)
 
         try:
             location, player = self._find_player(player_id)
@@ -1114,9 +1119,9 @@ class Game(object):
             player = None
 
         handlers = {
-            Constants.CMD_LOOK: self._look,
-            Constants.CMD_MOVE: self._move,
-            Constants.CMD_FIRE: self._fire,
+            constants.CMD_LOOK: self._look,
+            constants.CMD_MOVE: self._move,
+            constants.CMD_FIRE: self._fire,
         }
 
         packets = handlers[cmd](player, location, arg)
@@ -1130,7 +1135,7 @@ class Game(object):
     def _move(self, player, location, arg):
         self.world[location].remove(player)
 
-        diff = Constants.DIFFS[arg]
+        diff = constants.DIFFS[arg]
 
         old_location = location
         new_location = (location[0] + diff[0], location[1] + diff[1])
@@ -1141,7 +1146,7 @@ class Game(object):
         else:
             for obj,attr in self.world[new_location]:
                 # If the area is empty
-                if obj in Constants.SOLID_OBJECTS:
+                if obj in constants.SOLID_OBJECTS:
                     can_move = False
                     break
 
@@ -1165,11 +1170,11 @@ class Game(object):
         direction = player[1]['direction']
         player_id = player[1]['number']
 
-        diff = Constants.DIFFS[direction]
+        diff = constants.DIFFS[direction]
         bullet_location = location
 
         attr = {'owner': player_id, 'direction':direction, 'size':arg}
-        bullet = (Constants.OBJ_BULLET, attr)
+        bullet = (constants.OBJ_BULLET, attr)
 
         self.world[bullet_location].append(bullet)
 
@@ -1233,11 +1238,11 @@ class Game(object):
 
     def _tick_bullets(self, time_passed, dirty_coords):
         # Pair of (coord, object)
-        bullets = self.find_objs(Constants.OBJ_BULLET)
+        bullets = self.find_objs(constants.OBJ_BULLET)
         for coord,object in bullets:
             attr = object[1]
             size = attr['size']
-            speed = Constants.BULLET_SPEEDS[size]
+            speed = constants.BULLET_SPEEDS[size]
 
             if '_time_remaining' not in attr:
                 attr['_time_remaining'] = speed
@@ -1252,20 +1257,20 @@ class Game(object):
                 dirty_coords.add(coord)
 
 
-                loc_diff = Constants.DIFFS[object[1]['direction']]
+                loc_diff = constants.DIFFS[object[1]['direction']]
 
                 new_coord = (coord[0] + loc_diff[0], coord[1] + loc_diff[1])
 
                 if new_coord in self.world:
                     exploded = False
                     for other in list(self.world[new_coord]):
-                        if other[0] in Constants.SOLID_OBJECTS:
+                        if other[0] in constants.SOLID_OBJECTS:
                             # Boom, bullet explodes.
                             for ex_coord in neighbourhood(new_coord,n=size-1):
                                 if ex_coord not in self.world:
                                     continue
 
-                                explosion = (Constants.OBJ_EXPLOSION,
+                                explosion = (constants.OBJ_EXPLOSION,
                                              {'_damage':size**2})
 
                                 self.world[ex_coord].append(explosion)
@@ -1281,16 +1286,16 @@ class Game(object):
                         dirty_coords.add(new_coord)
 
     def _tick_explosions(self, time_passed, dirty_coords):
-        explosions = self.find_objs(Constants.OBJ_EXPLOSION)
+        explosions = self.find_objs(constants.OBJ_EXPLOSION)
         for coord,bullet in explosions:
             attr = bullet[1]
             if '_time_left' not in attr:
-                attr['_time_left'] = Constants.EXPLOSION_LIFE
+                attr['_time_left'] = constants.EXPLOSION_LIFE
             if '_damaged' not in attr:
                 attr['_damaged'] = []
 
             for object in list(self.world[coord]):
-                if object[0] in Constants.BLOWABLE_UP:
+                if object[0] in constants.BLOWABLE_UP:
                     if object in attr['_damaged']:
                         continue
                     else:
@@ -1300,7 +1305,7 @@ class Game(object):
                     hp -= attr['_damage']
 
                     if hp <= 0:
-                        if object[0] != Constants.OBJ_PLAYER:
+                        if object[0] != constants.OBJ_PLAYER:
                             self.world[coord].remove(object)
                         else:
                             player_id = object[1]['number']
@@ -1309,10 +1314,10 @@ class Game(object):
                         dirty_coords.add(coord)
 
                         non_explosions = [o for o in self.world[coord]
-                                          if o[0] != Constants.OBJ_EXPLOSION]
+                                          if o[0] != constants.OBJ_EXPLOSION]
 
                         if not non_explosions:
-                            empty = (Constants.OBJ_EMPTY, {})
+                            empty = (constants.OBJ_EMPTY, {})
                             self.world[coord].insert(0,empty)
                     else:
                         object[1]['hp'] = hp
@@ -1322,120 +1327,6 @@ class Game(object):
             if attr['_time_left'] < 0:
                 self.world[coord].remove(bullet)
                 dirty_coords.add(coord)
-
-class Constants:
-    # Constants
-    DEFAULT_PORT = 25008
-
-    GET_GAMES_LIST = 0
-    GAMES_RUNNING = 1
-    MAKE_NEW_GAME = 2
-    ERROR = 3
-    GAME_ACTION = 4
-    JOIN_GAME = 5
-    VISION_UPDATE = 6
-    KEEP_ALIVE = 7
-    GAME_STATUS = 8
-
-
-    STATUS_JOINED = 1
-    STATUS_LEFT = 2
-
-    UP = "up"
-    NORTHEAST = "ne"
-    NORTHWEST = "nw"
-    DOWN = "down"
-    SOUTHEAST = "se"
-    SOUTHWEST = "sw"
-    LEFT = "left"
-    RIGHT = "right"
-
-    DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
-
-    DIFFS = {
-        UP: (0, -1),
-        NORTHEAST: (1,-1),
-        NORTHWEST: (-1,-1),
-        DOWN: (0, 1),
-        SOUTHEAST: (1,1),
-        SOUTHWEST: (-1,1),
-        LEFT: (-1, 0),
-        RIGHT: (1, 0)
-    }
-    ADJACENT = {
-        UP: (LEFT, UP, RIGHT, NORTHEAST, NORTHWEST),
-        DOWN: (LEFT, DOWN, RIGHT, SOUTHEAST, SOUTHWEST),
-        LEFT: (UP, LEFT, DOWN, NORTHWEST, SOUTHWEST),
-        RIGHT: (UP, RIGHT, DOWN, NORTHEAST, SOUTHEAST),
-    }
-
-    CMD_MOVE = "move"
-    CMD_LOOK = "look"
-    CMD_FIRE = "fire"
-
-    OBJ_WALL = "wall"
-    OBJ_HORIZONTAL_WALL = "h-wall"
-    OBJ_VERTICAL_WALL = "v-wall"
-    OBJ_CORNER_WALL = "c-wall"
-    OBJ_PLAYER = "player"
-    OBJ_EMPTY = "empty"
-    OBJ_BULLET = "bullet"
-    OBJ_EXPLOSION = "boom"
-
-    WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)
-    HISTORICAL_OBJECTS = WALLS + (OBJ_EMPTY,)
-    SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
-    OPAQUE_OBJECTS = WALLS
-    ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,)
-
-    VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET)
-    BLOWABLE_UP = WALLS + (OBJ_PLAYER,)
-    CAN_STAB = (OBJ_PLAYER,)
-
-    VISION = {
-        'basic': vision_basic,
-        'cone': vision_cone,
-    }
-    ATTRIBUTE_KEYS = ("number", "direction", "team", "hp_max", "hp",
-                      "max_ammo", "ammo", "owner","size","historical")
-    ATTRIBUTE_CONSTANT_KEYS = ("direction",)
-
-    N1 = 1
-    N2 = 2
-    N3 = 3
-    N4 = 4
-    N5 = 5
-    N6 = 6
-    N7 = 7
-    N8 = 8
-    N9 = 9
-
-    BULLET_SPEEDS = {
-        1: 0.05,
-        2: 0.10,
-        3: 0.15,
-        4: 0.20,
-        5: 0.25,
-        6: 0.30,
-        7: 0.35,
-        8: 0.40,
-        9: 0.45,
-    }
-    EXPLOSION_LIFE = 0.5
-    KEEPALIVE_TIME = 5
-    @classmethod
-    def to_numerical_constant(cls,constant):
-        constants = vars(cls).items()
-        constants.sort(key=operator.itemgetter(0))
-        constants = [c[1] for c in constants]
-        return constants.index(constant)
-    @classmethod
-    def from_numerical_constant(cls,number):
-        constants = vars(cls).items()
-        constants.sort(key=operator.itemgetter(0))
-        constants = [c[1] for c in constants]
-        return constants[number]
-
 
 class NewScene(Exception):
     pass
