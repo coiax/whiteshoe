@@ -19,3 +19,11 @@ def grouper(n, iterable, fillvalue=None):
     # grouper(3, 'ABCDEFG', 'x') --> ABC DEF Gxx
     args = [iter(iterable)] * n
     return itertools.izip_longest(fillvalue=fillvalue, *args)
+
+def neighbourhood(coord,n=1):
+    coords = []
+    x,y = coord
+    for i in range(x-n, x+n+1):
+        for j in range(y-n, y+n+1):
+            coords.append((i,j))
+    return coords
