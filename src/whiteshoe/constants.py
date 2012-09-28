@@ -2,6 +2,44 @@ import operator
 import sys
 
 class Constants(object):
+    UP = "up"
+    NORTHEAST = "ne"
+    NORTHWEST = "nw"
+    DOWN = "down"
+    SOUTHEAST = "se"
+    SOUTHWEST = "sw"
+    LEFT = "left"
+    RIGHT = "right"
+
+    CMD_MOVE = "move"
+    CMD_LOOK = "look"
+    CMD_FIRE = "fire"
+
+    OBJ_WALL = "wall"
+    OBJ_HORIZONTAL_WALL = "h-wall"
+    OBJ_VERTICAL_WALL = "v-wall"
+    OBJ_CORNER_WALL = "c-wall"
+    OBJ_PLAYER = "player"
+    OBJ_EMPTY = "empty"
+    OBJ_BULLET = "bullet"
+    OBJ_EXPLOSION = "boom"
+
+    N1 = 1
+    N2 = 2
+    N3 = 3
+    N4 = 4
+    N5 = 5
+    N6 = 6
+    N7 = 7
+    N8 = 8
+    N9 = 9
+
+    _constants = vars().items()
+    _constants.sort(key=operator.itemgetter(0))
+    _constants_table = [c[1] for c in _constants]
+    del _constants
+
+    # Non-network constants after this point
     DEFAULT_PORT = 25008
 
     GET_GAMES_LIST = 0
@@ -14,18 +52,8 @@ class Constants(object):
     KEEP_ALIVE = 7
     GAME_STATUS = 8
 
-
     STATUS_JOINED = 1
     STATUS_LEFT = 2
-
-    UP = "up"
-    NORTHEAST = "ne"
-    NORTHWEST = "nw"
-    DOWN = "down"
-    SOUTHEAST = "se"
-    SOUTHWEST = "sw"
-    LEFT = "left"
-    RIGHT = "right"
 
     DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
 
@@ -46,19 +74,6 @@ class Constants(object):
         RIGHT: (UP, RIGHT, DOWN, NORTHEAST, SOUTHEAST),
     }
 
-    CMD_MOVE = "move"
-    CMD_LOOK = "look"
-    CMD_FIRE = "fire"
-
-    OBJ_WALL = "wall"
-    OBJ_HORIZONTAL_WALL = "h-wall"
-    OBJ_VERTICAL_WALL = "v-wall"
-    OBJ_CORNER_WALL = "c-wall"
-    OBJ_PLAYER = "player"
-    OBJ_EMPTY = "empty"
-    OBJ_BULLET = "bullet"
-    OBJ_EXPLOSION = "boom"
-
     WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)
     HISTORICAL_OBJECTS = WALLS + (OBJ_EMPTY,)
     SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
@@ -73,16 +88,6 @@ class Constants(object):
                       "max_ammo", "ammo", "owner","size","historical")
     ATTRIBUTE_CONSTANT_KEYS = ("direction",)
 
-    N1 = 1
-    N2 = 2
-    N3 = 3
-    N4 = 4
-    N5 = 5
-    N6 = 6
-    N7 = 7
-    N8 = 8
-    N9 = 9
-
     BULLET_SPEEDS = {
         1: 0.05,
         2: 0.10,
@@ -96,11 +101,6 @@ class Constants(object):
     }
     EXPLOSION_LIFE = 0.5
     KEEPALIVE_TIME = 5
-
-    _constants = vars().items()
-    _constants.sort(key=operator.itemgetter(0))
-    _constants_table = [c[1] for c in _constants]
-    del _constants
 
     @classmethod
     def to_numerical_constant(cls,constant):
