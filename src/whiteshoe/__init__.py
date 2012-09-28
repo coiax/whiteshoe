@@ -18,12 +18,12 @@ import readline
 import packet_pb2
 
 # mainmethods
-def server_main(args):
+def server_main(args=None):
     # Ignore arguments for now
     s = Server()
     s.serve()
 
-def client_main(args):
+def client_main(args=None):
     curses.wrapper(main2, args)
 
 def main2(stdscr, arguments):

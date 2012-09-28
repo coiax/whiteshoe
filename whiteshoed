@@ -1,4 +1,11 @@
 #!/usr/bin/python
+import sys
+import os.path
 
-import whiteshoe
+try:
+    import whiteshoe
+except ImportError:
+    sys.path.insert(0, os.path.join('.','src'))
+    import whiteshoe
+
 whiteshoe.server_main()
