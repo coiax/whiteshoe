@@ -13,7 +13,6 @@ import random
 import constants
 import packet_pb2
 from utility import get_id, grouper
-from exceptions import *
 
 def client_main(args=None):
     curses.wrapper(main2, args)
@@ -133,7 +132,7 @@ class GameScene(object):
                 #
                 # This is an artifact that may or may not be present
                 # as stuff changes.
-                #stdscr.addstr(y,x,"?",curses.color_pair(5) | curses.A_BOLD)
+                stdscr.addstr(y,x,"?",curses.color_pair(5) | curses.A_BOLD)
                 pass
 
         x,y = my_coord
