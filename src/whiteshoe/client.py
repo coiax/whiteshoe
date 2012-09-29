@@ -15,15 +15,13 @@ import packet_pb2
 from utility import get_id, grouper
 
 def client_main(args=None):
-    curses.wrapper(main2, args)
-
-
-def main2(stdscr, arguments):
     p = argparse.ArgumentParser()
     p.add_argument('-c','--connect',default="::1")
+    ns = p.parse_args(args)
 
-    ns = p.parse_args(arguments)
+    curses.wrapper(main2, ns)
 
+def main2(stdscr, ns):
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_GREEN, -1)
     curses.init_pair(2, curses.COLOR_RED, -1)
