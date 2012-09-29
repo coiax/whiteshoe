@@ -44,3 +44,17 @@ def bytes_to_human(bytes):
     else:
         fmt = "{0:.2f}{1}"
     return fmt.format(scaled, suffixes[value])
+
+def dict_difference(old, new):
+    changed = set()
+    # So all keys that are not present/are present with the old
+    # and the new, are changed.
+    changed.update(set(old).symmetric_difference(new))
+
+    shared = set(old) & set(new)
+
+    for key in shared:
+        if old[key] != new[key]:
+            changed.add(key)
+
+    return changed

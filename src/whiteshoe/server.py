@@ -7,10 +7,11 @@ import random
 import itertools
 import traceback
 import sys
+import copy
 
 import constants
 import packet_pb2
-from utility import neighbourhood, get_id, bytes_to_human
+from utility import neighbourhood, get_id, bytes_to_human, dict_difference
 
 def server_main(args=None):
     # Ignore arguments for now
@@ -520,27 +521,28 @@ class Game(object):
         changed_coords = self._update_known_world(player_id, visible_world)
 
         packets = [(player_id, join_packet)]
+
         packets.extend(self._send_player_vision(player_id, changed_coords))
-        packets.extend(self._mark_dirty(dirty))
+        packets.extend(self._mark_dirty(dirty,ignored=(player_id,)))
 
         return packets
 
     def _update_known_world(self, player_id, visible_world):
         known_world = self.known_worlds[player_id]
-        changed_coords = set()
+        original = copy.deepcopy(known_world)
 
-        # Decay the things we have in vision
-        for coord in set(visible_world):
-            if coord not in known_world:
-                continue
-            for obj,attr in list(known_world[coord]):
-                if obj in constants.HISTORICAL_OBJECTS:
-                    if attr.get('historical',False) != True:
-                        changed_coords.add(coord)
-                    attr['historical'] = True
-                else:
-                    known_world[coord].remove((obj,attr))
-                    changed_coords.add(coord)
+        def historical_decay(coords):
+            # Decay the things we have in vision
+            for coord in set(coords):
+                if coord not in known_world:
+                    continue
+                for obj,attr in list(known_world[coord]):
+                    if obj in constants.HISTORICAL_OBJECTS:
+                        attr['historical'] = True
+                    else:
+                        known_world[coord].remove((obj,attr))
+
+        historical_decay(visible_world)
 
         for coord, visible_objects in visible_world.items():
             known_objects = known_world.get(coord,[])
@@ -563,20 +565,12 @@ class Game(object):
                 new_state.append(object)
 
             if start_state != new_state:
-                changed_coords.add(coord)
                 known_world[coord] = new_state
 
         # Now, historical decay
-        coords = set(known_world) - set(visible_world)
-        for coord in coords:
-            for obj,attr in list(known_world[coord]):
-                if obj in constants.HISTORICAL_OBJECTS:
-                    if attr.get('historical',False) != True:
-                        changed_coords.add(coord)
-                    attr['historical'] = True
-                else:
-                    known_world[coord].remove((obj,attr))
-                    changed_coords.add(coord)
+        historical_decay(set(known_world) - set(visible_world))
+
+        changed_coords = dict_difference(original, known_world)
 
         return changed_coords
 
@@ -646,10 +640,13 @@ class Game(object):
 
                     current_packet.objects.extend([x,y,obj_type,attr_id])
 
+        packets.append(current_packet)
+
         #TODO For each packet, make sure that identical Attributes are
         # compressed down to one, and the corresponding attr_ids are changed.
 
-        return [(player_id, packet) for packet in packets]
+        out = [(player_id, packet) for packet in packets]
+        return out
 
     def find_objs(self, obj_type):
         locations = []
@@ -737,15 +734,25 @@ class Game(object):
             self.world[location].append(player)
             return []
         else:
-            self.world[new_location].append(player)
+            packets = []
+
             player_id = player[1]['number']
-            dirty_packets = self._mark_dirty([old_location,new_location])
             direction = player[1]['direction']
 
+            self.world[new_location].append(player)
+
+            dirty_packets = self._mark_dirty([old_location,new_location],
+                                             (player_id,))
+
+            packets.extend(dirty_packets)
+
             visible_world = self._determine_can_see(new_location, direction)
-            new_vision_packets = self._send_player_vision(player_id,
-                                                          visible_world)
-            return dirty_packets + new_vision_packets
+            changed_coords = self._update_known_world(player_id,
+                                                      visible_world)
+            packets.extend(self._send_player_vision(player_id,
+                                                    changed_coords))
+
+            return packets
 
     def _fire(self, player, location, arg):
         direction = player[1]['direction']
@@ -762,9 +769,10 @@ class Game(object):
         return self._mark_dirty([bullet_location])
 
 
-    def _mark_dirty(self, coordinates):
+    def _mark_dirty(self, coordinates, ignored=()):
+        # ignored is a list of player_ids
         packets = []
-        for player_id in self.players:
+        for player_id in set(self.players) - set(ignored):
             try:
                 location, playerobj = self._find_player(player_id)
             except PlayerNotFound:
