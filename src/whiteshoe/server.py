@@ -8,6 +8,7 @@ import itertools
 import traceback
 import sys
 import copy
+import argparse
 
 import constants
 import packet_pb2
@@ -15,12 +16,15 @@ from utility import neighbourhood, get_id, bytes_to_human, dict_difference
 
 def server_main(args=None):
     # Ignore arguments for now
-    s = Server()
+    p = argparse.ArgumentParser()
+    p.add_argument('-v','--vision',default='cone')
+    ns = p.parse_args(args)
+    s = Server(vars(ns))
     s.serve()
 
 class Server(object):
 
-    def __init__(self):
+    def __init__(self,options):
         self.handlers = {
             constants.GET_GAMES_LIST: self._get_games_list,
             # games running (s->c)
@@ -37,7 +41,7 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        g = Game(vision='all')
+        g = Game(vision=options.get('vision','cone'))
         self.games.append(g)
 
         self.seen_ids = []
