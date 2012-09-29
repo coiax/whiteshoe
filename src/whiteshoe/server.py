@@ -842,41 +842,45 @@ class Game(object):
 
             attr['_time_remaining'] -= time_passed
             # TODO, currently a bullet can move only 1 square per tick
-            if attr['_time_remaining'] < 0:
+
+            exploded = False
+            while attr['_time_remaining'] < 0 and not exploded:
                 attr['_time_remaining'] += speed
 
 
                 self.world[coord].remove(object)
                 dirty_coords.add(coord)
 
-
                 loc_diff = constants.DIFFS[object[1]['direction']]
 
                 new_coord = (coord[0] + loc_diff[0], coord[1] + loc_diff[1])
 
-                if new_coord in self.world:
-                    exploded = False
-                    for other in list(self.world[new_coord]):
-                        if other[0] in constants.SOLID_OBJECTS:
-                            # Boom, bullet explodes.
-                            for ex_coord in neighbourhood(new_coord,n=size-1):
-                                if ex_coord not in self.world:
-                                    continue
+                if new_coord not in self.world:
+                    # Bullet just disappears.
+                    break
 
-                                explosion = (constants.OBJ_EXPLOSION,
-                                             {'_damage':size**2})
+                any_solid = any(o[0] in constants.SOLID_OBJECTS
+                                for o in self.world[new_coord])
 
-                                self.world[ex_coord].append(explosion)
-                                dirty_coords.add(ex_coord)
-                                exploded = True
+                if any_solid:
+                    for ex_coord in neighbourhood(new_coord,n=size-1):
+                        if ex_coord not in self.world:
+                            continue
 
-                        if exploded:
-                            break
+                        explosion = (constants.OBJ_EXPLOSION,
+                                     {'_damage':size**2})
 
-                    if not exploded:
-                        # Bullet keeps moving
-                        self.world[new_coord].append(object)
-                        dirty_coords.add(new_coord)
+                        self.world[ex_coord].append(explosion)
+                        dirty_coords.add(ex_coord)
+                        exploded = True
+
+                if exploded:
+                    break
+                else:
+                    # Bullet keeps moving
+                    self.world[new_coord].append(object)
+                    dirty_coords.add(new_coord)
+                    coord = new_coord
 
     def _tick_explosions(self, time_passed, dirty_coords):
         explosions = self.find_objs(constants.OBJ_EXPLOSION)
