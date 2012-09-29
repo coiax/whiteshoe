@@ -82,7 +82,7 @@ class Server(object):
                     del self.clients[addr]
 
 
-            rlist, wlist, xlist = select.select([self.socket],[],[],0.005)
+            rlist, wlist, xlist = select.select([self.socket],[],[],0.05)
 
             display_stats(self.stats)
 
