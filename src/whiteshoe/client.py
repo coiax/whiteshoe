@@ -9,19 +9,25 @@ import time
 import readline
 import code
 import random
+import logging
 
 import constants
 import packet_pb2
 from utility import get_id, grouper
+
+logger = logging.getLogger(__name__)
 
 def client_main(args=None):
     p = argparse.ArgumentParser()
     p.add_argument('-c','--connect',default="::1")
     ns = p.parse_args(args)
 
+    #logging.basicConfig(filename='client.log',level=logging.DEBUG)
+
     curses.wrapper(main2, ns)
 
 def main2(stdscr, ns):
+    curses.curs_set(0) # not visible
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_GREEN, -1)
     curses.init_pair(2, curses.COLOR_RED, -1)
@@ -243,7 +249,7 @@ class GameScene(object):
         if obj == constants.OBJ_PLAYER:
             direction = attr['direction']
             if attr['number'] == self.network.player_id:
-                colour = curses.color_pair(1)
+                colour = curses.color_pair(1) | curses.A_REVERSE
             else:
                 colour = curses.color_pair(2)
 
