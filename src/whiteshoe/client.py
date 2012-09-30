@@ -104,23 +104,105 @@ class GameScene(object):
     def __init__(self, data):
         self.data = data
         self.network = data['network']
+
+        self.had_first_tick = False
+    def first_tick(self, stdscr):
+        # This is where all the initialisation stuff that can only happen
+        # with the curses screen can happen.
+        #self.viewport = curses.newwin()
+        max_y, max_x = stdscr.getmaxyx()
+        self.size = max_x, max_y
+
+        self.infobar_type = 'horizontal'
+        assert self.infobar_type in ('vertical', 'horizontal')
+
+        if self.infobar_type == 'vertical':
+            viewport, infobar = self._vertical_infobar(stdscr)
+        elif self.infobar_type == 'horizontal':
+            viewport, infobar = self._horizontal_infobar(stdscr)
+
+        self.viewport = stdscr.subwin(*viewport)
+        self.infobar = stdscr.subwin(*infobar)
+
+        # Debug
+        #self.viewport.bkgd("v")
+        #self.sidebar.bkgd("s")
+        self.infobar.border()
+        self.viewport.border()
+
+        #stdscr.border()
+
+    def _vertical_infobar(self, stdscr):
+        max_y, max_x = stdscr.getmaxyx()
+        INFOBAR_WIDTH = 20
+
+        viewport_topleft = (0,0) # y,x
+        viewport_linescols = (max_y , max_x - INFOBAR_WIDTH)
+        viewport = viewport_linescols + viewport_topleft
+
+        infobar_topleft = (0,max_x - INFOBAR_WIDTH)
+        infobar_linescols = (max_y, INFOBAR_WIDTH)
+        infobar = infobar_linescols + infobar_topleft
+
+        return viewport, infobar
+
+    def _horizontal_infobar(self, stdscr):
+        max_y, max_x = stdscr.getmaxyx()
+        INFOBAR_HEIGHT = 2
+
+        viewport_topleft = (0,0)
+        viewport_linescols = (max_y - INFOBAR_HEIGHT, max_x)
+
+        viewport = viewport_linescols + viewport_topleft
+
+        infobar_topleft = (max_y - INFOBAR_HEIGHT, 0)
+        infobar_linescols = (INFOBAR_HEIGHT, max_x)
+
+        infobar = infobar_linescols + infobar_topleft
+
+        return viewport, infobar
+
     def tick(self, stdscr):
+        if not self.had_first_tick:
+            self.first_tick(stdscr)
+            self.had_first_tick = True
+
         self.network.update()
-        visible = self.network.get_visible()
 
         # TODO currently window viewport is based on the 0,0 topleft
         # corner, and we want to be able to move around
-        stdscr.clear()
+        self.viewport.clear()
 
+        try:
+            my_coord, player = self.network.find_me()
+        except PlayerNotFound:
+            # Do not draw the viewport
+            pass
+        else:
+            self.draw_viewport(self.data.get('topleft',(0,0)))
+            pass
+
+    def draw_viewport(self, topleft):
+        visible = self.network.get_visible()
         my_coord, player = self.network.find_me()
 
+        max_y, max_x = self.viewport.getmaxyx()
+
+        drawing = set()
+        for i in range(topleft[0], topleft[0] + max_x):
+            for j in range(topleft[1], topleft[1] + max_y):
+                drawing.add((i,j))
+
         for coord, objects in visible.items():
-            x,y = coord
+            if coord not in drawing:
+                continue
+
+            x,y = (coord[0] - topleft[0], coord[1] - topleft[1])
             if objects:
                 for o in objects:
                     display_chr, colour = self.display_character(o)
                 try:
-                    stdscr.addstr(y,x,display_chr, colour)
+                    self.viewport.addstr(y,x,display_chr, colour)
                 except curses.error:
                     pass
             else:
@@ -130,13 +212,16 @@ class GameScene(object):
                 #
                 # This is an artifact that may or may not be present
                 # as stuff changes.
-                stdscr.addstr(y,x,"?",curses.color_pair(5) | curses.A_BOLD)
+                purple = curses.color_pair(5) | curses.A_BOLD
+                self.viewport.addstr(y,x,"?",purple)
                 pass
 
-        x,y = my_coord
-        stdscr.move(y,x)
-
-        stdscr.refresh()
+        if my_coord in drawing:
+            x,y = (my_coord[0] - topleft[0], my_coord[1] - topleft[1])
+            self.viewport.move(y,x)
+        else:
+            self.viewport.move(0,0)
+        self.viewport.refresh()
 
     def display_character(self, object, history=False):
         display_chr = None
@@ -358,8 +443,8 @@ class ClientNetwork(object):
 
                         return coord, object
 
-        # Failsafe
-        return (0,0), [constants.OBJ_PLAYER, {}]
+        # If no player is found
+        raise PlayerNotFound
 
     def get_visible(self):
         return self.known_world
@@ -439,6 +524,9 @@ class NewScene(ClientException):
     pass
 
 class CloseProgram(ClientException):
+    pass
+
+class PlayerNotFound(ClientException):
     pass
 
 if __name__=='__main__':
