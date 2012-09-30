@@ -27,7 +27,7 @@ def client_main(args=None):
     curses.wrapper(main2, ns)
 
 def main2(stdscr, ns):
-    curses.curs_set(0) # not visible
+    curses.curs_set(2) # block cursor
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_GREEN, -1)
     curses.init_pair(2, curses.COLOR_RED, -1)
@@ -133,8 +133,8 @@ class GameScene(object):
         # Debug
         #self.viewport.bkgd("v")
         #self.sidebar.bkgd("s")
-        self.infobar.border()
-        self.viewport.border()
+        #self.infobar.border()
+        #self.viewport.border()
 
         #stdscr.border()
 
@@ -249,7 +249,7 @@ class GameScene(object):
         if obj == constants.OBJ_PLAYER:
             direction = attr['direction']
             if attr['number'] == self.network.player_id:
-                colour = curses.color_pair(1) | curses.A_REVERSE
+                colour = curses.color_pair(1)# | curses.A_REVERSE
             else:
                 colour = curses.color_pair(2)
 
