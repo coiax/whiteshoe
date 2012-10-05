@@ -119,13 +119,13 @@ class GameScene(object):
         max_y, max_x = stdscr.getmaxyx()
         self.size = max_x, max_y
 
-        self.infobar_type = 'horizontal'
-        assert self.infobar_type in ('vertical', 'horizontal')
+        self.infobar_type = 'bottom'
+        assert self.infobar_type in ('bottom', 'rightside')
 
-        if self.infobar_type == 'vertical':
-            viewport, infobar = self._vertical_infobar(stdscr)
-        elif self.infobar_type == 'horizontal':
-            viewport, infobar = self._horizontal_infobar(stdscr)
+        if self.infobar_type == 'rightside':
+            viewport, infobar = self._rightside_infobar(stdscr)
+        elif self.infobar_type == 'bottom':
+            viewport, infobar = self._bottom_infobar(stdscr)
 
         self.viewport = stdscr.subwin(*viewport)
         self.infobar = stdscr.subwin(*infobar)
@@ -138,7 +138,7 @@ class GameScene(object):
 
         #stdscr.border()
 
-    def _vertical_infobar(self, stdscr):
+    def _rightside_infobar(self, stdscr):
         max_y, max_x = stdscr.getmaxyx()
         INFOBAR_WIDTH = 20
 
@@ -152,7 +152,7 @@ class GameScene(object):
 
         return viewport, infobar
 
-    def _horizontal_infobar(self, stdscr):
+    def _bottom_infobar(self, stdscr):
         max_y, max_x = stdscr.getmaxyx()
         INFOBAR_HEIGHT = 2
 
@@ -185,6 +185,7 @@ class GameScene(object):
             # Do not draw the viewport
             pass
         else:
+            self.draw_infobar()
             self.draw_viewport(self.data.get('topleft',(0,0)))
             pass
 
@@ -224,10 +225,48 @@ class GameScene(object):
 
         if my_coord in drawing:
             x,y = (my_coord[0] - topleft[0], my_coord[1] - topleft[1])
+            curses.curs_set(2) # block cursor
             self.viewport.move(y,x)
         else:
             self.viewport.move(0,0)
+            curses.curs_set(0) # hide cursor
         self.viewport.refresh()
+
+    def draw_infobar(self):
+        assert self.infobar_type in ('rightside', 'bottom')
+
+        if self.infobar_type == 'bottom':
+            self._draw_bottom_infobar()
+        elif self.infobar_type == 'rightside':
+            self._draw_rightside_infobar()
+
+    def _draw_rightside_infobar(self):
+        visible = self.network.get_visible()
+        my_coord, player = self.network.find_me()
+        self.infobox.border()
+
+    def _draw_bottom_infobar(self):
+        visible = self.network.get_visible()
+        my_coord, player = self.network.find_me()
+
+        attr = player[1]
+
+        name = attr.get('name', 'Unnamed')
+        hp = attr.get('hp', '?')
+        hp_max = attr.get('hp_max', '?')
+        ammo = attr.get('ammo', '?')
+        max_ammo = attr.get('max_ammo', '?')
+
+        fmt1 = "{name}"
+        # TODO draw hp in green/yellow/red depending on health
+        fmt2 = "HP:{hp}({hp_max}) Ammo:{ammo}({max_ammo})"
+        line1 = fmt1.format(name=name)
+        line2 = fmt2.format(hp=hp, hp_max=hp_max, ammo=ammo, max_ammo=max_ammo)
+
+        self.infobar.addstr(0,0,line1)
+        self.infobar.addstr(1,0,line2)
+
+        self.infobar.refresh()
 
     def display_character(self, object, history=False):
         display_chr = None

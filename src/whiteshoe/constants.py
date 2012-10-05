@@ -86,7 +86,8 @@ class Constants(object):
     CAN_STAB = (OBJ_PLAYER,)
 
     ATTRIBUTE_KEYS = ("number", "direction", "team", "hp_max", "hp",
-                      "max_ammo", "ammo", "owner","size","historical")
+                      "max_ammo", "ammo", "owner","size","historical",
+                      "name")
     ATTRIBUTE_CONSTANT_KEYS = ("direction",)
 
     BULLET_SPEEDS = {
