@@ -455,6 +455,7 @@ class Game(object):
         return player_id in self.players
 
     def _spawn_player(self, player_id):
+        dirty = set()
         try:
             location, player_obj = self._find_player(player_id)
         except PlayerNotFound:
@@ -470,21 +471,40 @@ class Game(object):
             suitable -= set(self.find_obj_locations(obj_type))
 
         spawn_coord = random.choice(list(suitable))
+        suitable.remove(spawn_coord)
+        dirty.add(spawn_coord)
         direction = random.choice(constants.DIRECTIONS)
 
         start_max_hp = 10
+        start_ammo = 10
 
         player = (constants.OBJ_PLAYER,
                   {'number':player_id,
                    'direction': direction,
                    'team':player_id,
                    'hp':start_max_hp,
-                   'hp_max': start_max_hp})
+                   'hp_max': start_max_hp,
+                   'ammo' : start_ammo})
 
         self.world[spawn_coord].append(player)
 
-        dirty = [spawn_coord]
-        return dirty
+        # And now, some mines
+        for mine_size in (1,2):
+            # symbols are ; and g
+            mine_coord = random.choice(list(suitable))
+            suitable.remove(mine_coord)
+
+            mine = (constants.OBJ_MINE, {'size': mine_size})
+
+            self.world[mine_coord].append(mine)
+            dirty.add(mine_coord)
+
+        # And increase all ammo for all players by 5
+        # including the new player
+        for coord, player in self.find_objs(constants.OBJ_PLAYER):
+            player[1]['ammo'] += 5
+
+        return list(dirty)
 
     def _remove_player(self, player_id):
         location, player = self._find_player(player_id)
@@ -715,6 +735,9 @@ class Game(object):
         return self._mark_dirty([location])
 
     def _move(self, player, location, arg):
+        # We'll return this list later
+        packets = []
+
         self.world[location].remove(player)
 
         diff = constants.DIFFS[arg]
@@ -736,10 +759,19 @@ class Game(object):
         if not can_move:
             # Player can't move to that location, no move
             self.world[location].append(player)
-            return []
-        else:
-            packets = []
 
+            dirty = False
+            # Special case stabbing things.
+            for object in self.world[new_location]:
+                if object[0] in constants.CAN_STAB:
+                    self._damage_object(new_location, object,
+                                        constants.STAB_DAMAGE)
+                    dirty = True
+
+            if dirty:
+                packets.extend(self._mark_dirty([new_location]))
+
+        else:
             player_id = player[1]['number']
             direction = player[1]['direction']
 
@@ -756,16 +788,32 @@ class Game(object):
             packets.extend(self._send_player_vision(player_id,
                                                     changed_coords))
 
-            return packets
+        return packets
 
     def _fire(self, player, location, arg):
         direction = player[1]['direction']
         player_id = player[1]['number']
+        power = arg
+
+        attr = player[1]
+
+        ammo = attr['ammo']
+        ammo_cost = power**2
+        # Find how much ammo the player can spend
+        while ammo_cost > ammo:
+            power -= 1
+
+            if power == 0:
+                # Nothing happens, not enough ammo
+                return []
+            ammo_cost = power**2
+
+        attr['ammo'] -= ammo_cost
 
         diff = constants.DIFFS[direction]
         bullet_location = location
 
-        attr = {'owner': player_id, 'direction':direction, 'size':arg}
+        attr = {'owner': player_id, 'direction':direction, 'size':power}
         bullet = (constants.OBJ_BULLET, attr)
 
         self.world[bullet_location].append(bullet)
@@ -898,32 +946,36 @@ class Game(object):
                     else:
                         attr['_damaged'].append(object)
 
-                    hp = object[1].get('hp', 0)
-                    hp -= attr['_damage']
+                    self._damage_object(coord, object, attr['_damage'])
+                    dirty_coords.add(coord)
 
-                    if hp <= 0:
-                        if object[0] != constants.OBJ_PLAYER:
-                            self.world[coord].remove(object)
-                        else:
-                            player_id = object[1]['number']
-                            self._kill_player(player_id)
+                    non_explosions = [o for o in self.world[coord]
+                                      if o[0] != constants.OBJ_EXPLOSION]
 
-                        dirty_coords.add(coord)
-
-                        non_explosions = [o for o in self.world[coord]
-                                          if o[0] != constants.OBJ_EXPLOSION]
-
-                        if not non_explosions:
-                            empty = (constants.OBJ_EMPTY, {})
-                            self.world[coord].insert(0,empty)
-                    else:
-                        object[1]['hp'] = hp
-
+                    if not non_explosions:
+                        # If we've destroyed everything else,
+                        # insert a new EMPTY into the world
+                        empty = (constants.OBJ_EMPTY, {})
+                        self.world[coord].insert(0,empty)
 
             attr['_time_left'] -= time_passed
             if attr['_time_left'] < 0:
                 self.world[coord].remove(bullet)
                 dirty_coords.add(coord)
+
+    def _damage_object(self, coord, object, amount):
+        hp = object[1].get('hp', 0)
+        hp -= amount
+
+        object[1]['hp'] = hp
+
+        if hp <= 0:
+            if object[0] != constants.OBJ_PLAYER:
+                self.world[coord].remove(object)
+            else:
+                player_id = object[1]['number']
+                self._kill_player(player_id)
+
 
 class ServerException(Exception):
     pass

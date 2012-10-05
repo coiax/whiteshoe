@@ -181,6 +181,15 @@ class GameScene(object):
 
         try:
             my_coord, player = self.network.find_me()
+            hp = player[1]['hp']
+            try:
+                if hp < self._last_hp:
+                    curses.flash()
+            except AttributeError:
+                pass
+            finally:
+                self._last_hp = hp
+
         except PlayerNotFound:
             # Do not draw the viewport
             pass
@@ -246,22 +255,24 @@ class GameScene(object):
         self.infobox.border()
 
     def _draw_bottom_infobar(self):
+        self.infobar.clear()
         visible = self.network.get_visible()
         my_coord, player = self.network.find_me()
 
         attr = player[1]
 
-        name = attr.get('name', 'Unnamed')
-        hp = attr.get('hp', '?')
-        hp_max = attr.get('hp_max', '?')
-        ammo = attr.get('ammo', '?')
-        max_ammo = attr.get('max_ammo', '?')
+        fmta = {
+            'name' : attr.get('name', 'Unnamed'),
+            'hp': attr.get('hp', '?'),
+            'hp_max': attr.get('hp_max', '?'),
+            'ammo': attr.get('ammo','?')
+        }
 
         fmt1 = "{name}"
         # TODO draw hp in green/yellow/red depending on health
-        fmt2 = "HP:{hp}({hp_max}) Ammo:{ammo}({max_ammo})"
-        line1 = fmt1.format(name=name)
-        line2 = fmt2.format(hp=hp, hp_max=hp_max, ammo=ammo, max_ammo=max_ammo)
+        fmt2 = "HP: {hp}({hp_max}) Ammo: {ammo}"
+        line1 = fmt1.format(**fmta)
+        line2 = fmt2.format(**fmta)
 
         self.infobar.addstr(0,0,line1)
         self.infobar.addstr(1,0,line2)
@@ -283,7 +294,8 @@ class GameScene(object):
             constants.OBJ_VERTICAL_WALL: '|',
             constants.OBJ_CORNER_WALL: '+',
             constants.OBJ_BULLET: ':',
-            constants.OBJ_EXPLOSION: '*'}.get(obj,'?')
+            constants.OBJ_EXPLOSION: '*',
+            constants.OBJ_MINE: ';'}.get(obj,'?')
 
         if obj == constants.OBJ_PLAYER:
             direction = attr['direction']
@@ -308,6 +320,12 @@ class GameScene(object):
                 colour = curses.color_pair(2)
         elif obj == constants.OBJ_EXPLOSION:
             colour = curses.color_pair(4)
+        elif obj == constants.OBJ_MINE:
+            colour = curses.color_pair(4) # yellow
+            if attr['size'] == 1:
+                display_chr = ';'
+            elif attr['size'] == 2:
+                display_chr = 'g'
 
         assert display_chr is not None
 

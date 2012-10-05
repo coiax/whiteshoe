@@ -23,6 +23,7 @@ class Constants(object):
     OBJ_EMPTY = "empty"
     OBJ_BULLET = "bullet"
     OBJ_EXPLOSION = "boom"
+    OBJ_MINE = "mine"
 
     N1 = 1
     N2 = 2
@@ -81,8 +82,9 @@ class Constants(object):
     OPAQUE_OBJECTS = WALLS
     ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,)
 
-    VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET)
-    BLOWABLE_UP = WALLS + (OBJ_PLAYER,)
+    VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET,
+                              OBJ_MINE)
+    BLOWABLE_UP = WALLS + (OBJ_PLAYER,OBJ_MINE)
     CAN_STAB = (OBJ_PLAYER,)
 
     ATTRIBUTE_KEYS = ("number", "direction", "team", "hp_max", "hp",
@@ -103,6 +105,7 @@ class Constants(object):
     }
     EXPLOSION_LIFE = 0.5
     KEEPALIVE_TIME = 5
+    STAB_DAMAGE = 2
 
     @classmethod
     def to_numerical_constant(cls,constant):
