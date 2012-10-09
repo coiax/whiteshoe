@@ -690,14 +690,10 @@ class Game(object):
         # Find player location
         location = None
 
-        for coord, objects in self.world.items():
-            for obj, attr in objects:
-                if obj == constants.OBJ_PLAYER and attr['number'] == number:
-                    player = (obj, attr)
-                    location = coord
-                    break
-
-            if location is not None:
+        for coord, object in self.find_objs(constants.OBJ_PLAYER):
+            if object[1]['number'] == number:
+                location = coord
+                player = object
                 break
 
         if location is None:
