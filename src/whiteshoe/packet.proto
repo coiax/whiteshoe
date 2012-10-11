@@ -59,6 +59,7 @@ message Packet {
         optional string name = 11;
     }
     repeated Attribute attributes = 602;
+    optional bool clear_all = 603;
 
     // 7 - keep alive
     optional sint64 timestamp = 700;

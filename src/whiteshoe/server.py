@@ -447,6 +447,10 @@ class Game(object):
 
         self.last_tick = None
 
+        # Dirty stuff
+        self._dirty_coords = set()
+        self._dirty_players = set()
+
     @property
     def current_players(self):
         return len(self.players)
@@ -455,7 +459,6 @@ class Game(object):
         return player_id in self.players
 
     def _spawn_player(self, player_id):
-        dirty = set()
         try:
             location, player_obj = self._find_player(player_id)
         except PlayerNotFound:
@@ -472,7 +475,8 @@ class Game(object):
 
         spawn_coord = random.choice(list(suitable))
         suitable.remove(spawn_coord)
-        dirty.add(spawn_coord)
+        self._mark_dirty_cell(spawn_coord)
+        self._mark_dirty_player(player_id)
         direction = random.choice(constants.DIRECTIONS)
 
         start_max_hp = 10
@@ -497,20 +501,19 @@ class Game(object):
             mine = (constants.OBJ_MINE, {'size': mine_size})
 
             self.world[mine_coord].append(mine)
-            dirty.add(mine_coord)
+            self._mark_dirty_cell(mine_coord)
 
         # And increase all ammo for all players by 5
         # including the new player
         for coord, player in self.find_objs(constants.OBJ_PLAYER):
             player[1]['ammo'] += 5
 
-        return list(dirty)
-
     def _remove_player(self, player_id):
         location, player = self._find_player(player_id)
         self.world[location].remove(player)
 
-        return self._mark_dirty([location])
+        self._mark_dirty_cell(location)
+
 
     def _kill_player(self, player_id):
         self._remove_player(player_id)
@@ -522,7 +525,7 @@ class Game(object):
         self.players.append(player_id)
         self.known_worlds[player_id] = {}
 
-        dirty = self._spawn_player(player_id)
+        self._spawn_player(player_id)
         location, player = self._find_player(player_id)
 
 
@@ -540,14 +543,10 @@ class Game(object):
         join_packet.game_vision = self.vision
 
         direction = player[1]['direction']
-        visible_world = self._determine_can_see(location, direction)
-
-        changed_coords = self._update_known_world(player_id, visible_world)
 
         packets = [(player_id, join_packet)]
 
-        packets.extend(self._send_player_vision(player_id, changed_coords))
-        packets.extend(self._mark_dirty(dirty,ignored=(player_id,)))
+        packets.extend(self._flush_dirty())
 
         return packets
 
@@ -604,14 +603,14 @@ class Game(object):
         try:
             location, player = self._find_player(player_id)
         except PlayerNotFound:
-            packets = []
+            pass
         else:
-            packets = self._remove_player(player_id)
+            self._remove_player(player_id)
 
         del self.known_worlds[player_id]
         self.players.remove(player_id)
 
-        return packets
+        return self._flush_dirty()
 
     def _determine_can_see(self, coord, direction):
         vision_func = self.VISION_FUNCTIONS[self.vision]
@@ -620,7 +619,7 @@ class Game(object):
 
         return visible_world
 
-    def _send_player_vision(self,player_id, coords):
+    def _send_player_vision(self,player_id, coords, all=False):
         #location, player = self._find_player(player_id)
 
         known_world = self.known_worlds[player_id]
@@ -635,6 +634,8 @@ class Game(object):
             return packet
 
         current_packet = gen_packet()
+        if all:
+            current_packet.clear_all = True
 
         for coord in coords:
             if current_packet.ByteSize() > constants.PACKET_SIZE_LIMIT:
@@ -642,6 +643,8 @@ class Game(object):
                 current_packet = gen_packet()
 
             if coord not in self.world:
+                continue
+            if coord not in known_world:
                 continue
 
             if known_world[coord] == []:
@@ -722,18 +725,19 @@ class Game(object):
             constants.CMD_FIRE: self._fire,
         }
 
-        packets = handlers[cmd](player, location, arg)
+        handlers[cmd](player, location, arg)
 
+        packets = self._flush_dirty()
         return packets
 
     def _look(self, player, location, arg):
         player[1]['direction'] = arg
-        return self._mark_dirty([location])
+        player_number = player[1]['number']
+        self._mark_dirty_cell(location)
+        self._mark_dirty_player(player_number)
 
     def _move(self, player, location, arg):
         # We'll return this list later
-        packets = []
-
         self.world[location].remove(player)
 
         diff = constants.DIFFS[arg]
@@ -756,16 +760,12 @@ class Game(object):
             # Player can't move to that location, no move
             self.world[location].append(player)
 
-            dirty = False
             # Special case stabbing things.
             for object in self.world[new_location]:
                 if object[0] in constants.CAN_STAB:
                     self._damage_object(new_location, object,
                                         constants.STAB_DAMAGE)
-                    dirty = True
-
-            if dirty:
-                packets.extend(self._mark_dirty([new_location]))
+                    self._mark_dirty_cell(new_location)
 
         else:
             player_id = player[1]['number']
@@ -773,18 +773,9 @@ class Game(object):
 
             self.world[new_location].append(player)
 
-            dirty_packets = self._mark_dirty([old_location,new_location],
-                                             (player_id,))
-
-            packets.extend(dirty_packets)
-
-            visible_world = self._determine_can_see(new_location, direction)
-            changed_coords = self._update_known_world(player_id,
-                                                      visible_world)
-            packets.extend(self._send_player_vision(player_id,
-                                                    changed_coords))
-
-        return packets
+            for cell in (old_location, new_location):
+                self._mark_dirty_cell(cell)
+            self._mark_dirty_player(player_id)
 
     def _fire(self, player, location, arg):
         direction = player[1]['direction']
@@ -814,8 +805,49 @@ class Game(object):
 
         self.world[bullet_location].append(bullet)
 
-        return self._mark_dirty([bullet_location])
+        self._mark_dirty_cell(bullet_location)
 
+
+    def _mark_dirty_cell(self, coord):
+        self._dirty_coords.add(coord)
+
+    def _mark_dirty_player(self, player_id):
+        self._dirty_players.add(player_id)
+
+    def _flush_dirty(self):
+        packets = []
+
+        # Return a number of packet tuples, in the form
+        # (player_id, packet) generally vision packets, informing the player
+        # of what has changed.
+        for player_id in self.players:
+            try:
+                location, playerobj = self._find_player(player_id)
+            except PlayerNotFound:
+                # If player isn't present in the map, then we don't have
+                # to worry about vision for them
+                continue
+
+            direction = playerobj[1]['direction']
+            visible_world = self._determine_can_see(location, direction)
+            changed = self._update_known_world(player_id, visible_world)
+
+            if player_id in self._dirty_players:
+                # yes, for now, if a player is marked dirty, then we
+                # just send his whole known world
+                known_world = self.known_worlds[player_id]
+                p = self._send_player_vision(player_id, set(known_world),
+                                             all=True)
+                packets.extend(p)
+            elif self._dirty_coords:
+                p = self._send_player_vision(player_id,
+                                             self._dirty_coords | changed)
+                packets.extend(p)
+
+        self._dirty_players.clear()
+        self._dirty_coords.clear()
+
+        return packets
 
     def _mark_dirty(self, coordinates, ignored=()):
         # ignored is a list of player_ids
@@ -865,15 +897,12 @@ class Game(object):
 
         dirty_coords = set()
 
-        self._tick_bullets(time_diff_s, dirty_coords)
-        self._tick_explosions(time_diff_s, dirty_coords)
+        self._tick_bullets(time_diff_s)
+        self._tick_explosions(time_diff_s)
 
-        if dirty_coords:
-            return self._mark_dirty(dirty_coords)
-        else:
-            return ()
+        return self._flush_dirty()
 
-    def _tick_bullets(self, time_passed, dirty_coords):
+    def _tick_bullets(self, time_passed):
         # Pair of (coord, object)
         bullets = self.find_objs(constants.OBJ_BULLET)
         for coord,object in bullets:
@@ -885,7 +914,6 @@ class Game(object):
                 attr['_time_remaining'] = speed
 
             attr['_time_remaining'] -= time_passed
-            # TODO, currently a bullet can move only 1 square per tick
 
             exploded = False
             while attr['_time_remaining'] < 0 and not exploded:
@@ -893,7 +921,7 @@ class Game(object):
 
 
                 self.world[coord].remove(object)
-                dirty_coords.add(coord)
+                self._mark_dirty_cell(coord)
 
                 loc_diff = constants.DIFFS[object[1]['direction']]
 
@@ -915,7 +943,7 @@ class Game(object):
                                      {'_damage':size**2})
 
                         self.world[ex_coord].append(explosion)
-                        dirty_coords.add(ex_coord)
+                        self._mark_dirty_cell(ex_coord)
                         exploded = True
 
                 if exploded:
@@ -923,13 +951,14 @@ class Game(object):
                 else:
                     # Bullet keeps moving
                     self.world[new_coord].append(object)
-                    dirty_coords.add(new_coord)
+                    self._mark_dirty_cell(new_coord)
                     coord = new_coord
+                    # Then the while loop may continue
 
-    def _tick_explosions(self, time_passed, dirty_coords):
+    def _tick_explosions(self, time_passed):
         explosions = self.find_objs(constants.OBJ_EXPLOSION)
-        for coord,bullet in explosions:
-            attr = bullet[1]
+        for coord,explosion in explosions:
+            attr = explosion[1]
             if '_time_left' not in attr:
                 attr['_time_left'] = constants.EXPLOSION_LIFE
             if '_damaged' not in attr:
@@ -943,7 +972,7 @@ class Game(object):
                         attr['_damaged'].append(object)
 
                     self._damage_object(coord, object, attr['_damage'])
-                    dirty_coords.add(coord)
+                    self._mark_dirty_cell(coord)
 
                     non_explosions = [o for o in self.world[coord]
                                       if o[0] != constants.OBJ_EXPLOSION]
@@ -956,8 +985,8 @@ class Game(object):
 
             attr['_time_left'] -= time_passed
             if attr['_time_left'] < 0:
-                self.world[coord].remove(bullet)
-                dirty_coords.add(coord)
+                self.world[coord].remove(explosion)
+                self._mark_dirty_cell(coord)
 
     def _damage_object(self, coord, object, amount):
         hp = object[1].get('hp', 0)

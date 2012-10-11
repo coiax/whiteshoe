@@ -549,6 +549,10 @@ class ClientNetwork(object):
 
         cleared = set()
 
+        if packet.clear_all:
+            self.known_world.clear()
+
+
         for x,y,obj_type,attr_id in grouper(4, packet.objects):
             assert None not in (x,y,obj_type,attr_id)
 
