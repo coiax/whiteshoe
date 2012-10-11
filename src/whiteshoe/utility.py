@@ -1,5 +1,6 @@
 import itertools
 import math
+import collections
 
 class IDCounter(object):
     def __init__(self):
@@ -14,6 +15,55 @@ class IDCounter(object):
         return new_id
 
 get_id = IDCounter().get_id
+
+class bidict(collections.MutableMapping):
+    def __init__(self, dict_=None):
+        self._a_to_b = {}
+        self._b_to_a = {}
+        self._items = set()
+
+        if dict_ is not None:
+            for key, value in dict_.items():
+                self[key] = value
+
+    def __eq__(self, other):
+        return self.items() == other.items()
+    def __repr__(self):
+        return "bidict({0})".format(repr(dict(self.items())))
+    def __getitem__(self, key):
+        if key not in self._items:
+            raise KeyError(key)
+        if key in self._a_to_b:
+            return self._a_to_b[key]
+        else:
+            return self._b_to_a[key]
+    def __setitem__(self, key, value):
+        if key in self:
+            del self[key]
+        if value in self:
+            del self[value]
+
+        self._items.add(key)
+        self._items.add(value)
+
+        self._a_to_b[key] = value
+        self._b_to_a[value] = key
+
+    def __delitem__(self, key):
+        if key not in self._items:
+            raise KeyError(key)
+        self._items.remove(key)
+        if key in self._a_to_b:
+            del self._a_to_b[key]
+        if key in self._b_to_a:
+            del self._b_to_a[key]
+
+    def __len__(self):
+        return len(self._items)
+    def __iter__(self):
+        return iter(self._items)
+    def __contains__(self, key):
+        return key in self._items
 
 def grouper(n, iterable, fillvalue=None):
     "Collect data into fixed-length chunks or blocks"
