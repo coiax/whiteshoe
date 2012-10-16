@@ -108,3 +108,28 @@ def dict_difference(old, new):
             changed.add(key)
 
     return changed
+
+def bresenhams_line(p1, p2):
+    points = []
+
+    # Pseudocode straight from wikipedia
+    x0, y0 = p1
+    x1, y1 = p2
+
+    deltax = x1 - x0
+    assert deltax != 0 # Line is not vertical
+    deltay = y1 - y0
+
+    error = 0.0
+    deltaerr = abs(float(deltay) / float(deltax))
+    y = y0
+
+    for x in range(x0, x1 + 1):
+        points.append((x,y))
+        error += deltaerr
+        if error >= 0.5:
+            y += 1
+            error -= 1.0
+
+    return points
+

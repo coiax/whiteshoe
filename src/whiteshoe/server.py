@@ -12,7 +12,8 @@ import argparse
 
 import constants
 import packet_pb2
-from utility import neighbourhood, get_id, bytes_to_human, dict_difference
+from utility import (neighbourhood, get_id, bytes_to_human, dict_difference,
+                     bresenhams_line)
 
 def server_main(args=None):
     # Ignore arguments for now
@@ -386,6 +387,23 @@ def vision_cone(world, coord, direction):
 def vision_all(world, coord, direction):
     visible_coords = set(world)
     return _visible_world(world, visible_coords)
+
+def vision_bresenham(world, coord, direction):
+    visible_coords = set()
+
+    ####....
+    #      .
+    #   >  .
+    #      .
+    ####....
+
+    # We need some manner of selecting our perimeter
+
+    min_coord = min(world)
+    max_coord = max(world)
+
+    return _visible_world(world, visible_coords)
+
 
 def network_pack_object(coord, object):
     x,y = coord
