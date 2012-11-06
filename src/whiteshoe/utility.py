@@ -109,27 +109,169 @@ def dict_difference(old, new):
 
     return changed
 
+def failsafe_range(a,b):
+    # Returns a, a + 1, a + 2... a + n, b
+    # range, or an a, a -1, ... a-n, b range
+    if a < b:
+        return range(a,b + 1)
+    else:
+        return range(b,a + 1)
+
 def bresenhams_line(p1, p2):
     points = []
 
-    # Pseudocode straight from wikipedia
+    # Pseudocode straight from wikipedia, with some modifications
     x0, y0 = p1
     x1, y1 = p2
 
     deltax = x1 - x0
-    assert deltax != 0 # Line is not vertical
+    if deltax == 0:
+        # Line is vertical
+        points = [(x0, y) for y in failsafe_range(y0, y1)]
+        return points
     deltay = y1 - y0
 
     error = 0.0
     deltaerr = abs(float(deltay) / float(deltax))
     y = y0
 
-    for x in range(x0, x1 + 1):
+    for x in failsafe_range(x0, x1):
         points.append((x,y))
         error += deltaerr
         if error >= 0.5:
-            y += 1
+            if y0 < y1:
+                y += 1
+            else:
+                y -= 1
             error -= 1.0
+
+    if points[0] == p1 and points[-1] == p2:
+        return points
+    elif points[0] == p2 and points[-1] == p1:
+        return list(reversed(points))
+    else:
+        assert False #Problem with the algorithm
+
+def bresenhams_line(p1, p2):
+    x0, y0 = p1
+    x1, y1 = p2
+
+    dx = abs(x1 - x0)
+    dy = -abs(y1 - y0)
+
+    if x0 < x1:
+        sx = 1
+    else:
+        sx = -1
+
+    if y0 < y1:
+        sy = 1
+    else:
+        sy = -1
+
+    err = dx - dy
+    points = []
+    while True:
+        points.append((x0, y0))
+        if x0 == x1 and y0 == y1:
+            break
+        e2 = 2*err
+        if e2 >= dy:
+            err += dy
+            x0 += sx
+        if e2 < dx:
+            err += dx
+            y0 += sy
+
+    assert points[0] == p1
+    assert points[-1] == p2
 
     return points
 
+def bresenhams_line(p1, p2):
+    x,y = p1
+    x2,y2 = p2
+
+    w = x2 - x
+    h = y2 - y
+    dx1 = dy1 = 0
+    dx2 = dy2 = 0
+
+    if w < 0:
+        dx1 = -1
+        dx2 = -1
+    elif w > 0:
+        dx1 = 1
+        dx2 = 1
+
+    if h < 0:
+        dy1 = -1
+    elif h > 0:
+        dy1 = 1
+
+    longest = abs(w)
+    shortest = abs(h)
+
+    if not longest > shortest:
+        longest = abs(h)
+        shortest = abs(w)
+
+        if h < 0:
+            dy2 = -1
+        elif h > 0:
+            dy2 = 1
+
+        dx2 = 0
+
+    numerator = longest >> 1
+    points = []
+    for i in range(longest + 1):
+        points.append((x,y))
+        numerator += shortest
+        if not numerator < longest:
+            numerator -= longest
+            x += dx1
+            y += dy1
+        else:
+            x += dx2
+            y += dx2
+
+
+    return points
+
+def bresenhams_line((x,y),(x2,y2)):
+    """Brensenham line algorithm"""
+    steep = 0
+    coords = []
+    dx = abs(x2 - x)
+    if (x2 - x) > 0:
+        sx = 1
+    else:
+        sx = -1
+    dy = abs(y2 - y)
+    if (y2 - y) > 0:
+        sy = 1
+    else:
+        sy = -1
+    if dy > dx:
+        steep = 1
+        x,y = y,x
+        dx,dy = dy,dx
+        sx,sy = sy,sx
+    d = (2 * dy) - dx
+    for i in range(0,dx):
+        if steep:
+            coords.append((y,x))
+        else:
+            coords.append((x,y))
+        while d >= 0:
+            y = y + sy
+            d = d - (2 * dx)
+        x = x + sx
+        d = d + (2 * dy)
+    coords.append((x2,y2))
+
+    assert points[0] == p1
+    assert points[-1] == p2
+
+    return coords

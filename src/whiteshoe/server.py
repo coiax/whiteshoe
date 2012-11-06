@@ -389,21 +389,50 @@ def vision_all(world, coord, direction):
     return visible_coords
 
 def vision_bresenham(world, coord, direction):
-    visible_coords = set()
-
     ####....
     #      .
     #   >  .
     #      .
     ####....
 
-    # We need some manner of selecting our perimeter
+    perimeter = []
+    perimeter.extend([(i,0) for i in range(max_coord[0])])
+    perimeter.extend([(i,max_coord[1]) for i in range(max_coord[0])])
+    perimeter.extend([(0,j) for j in range(max_coord[1])])
+    perimeter.extend([(max_coord[0],j) for j in range(max_coord[1])])
 
-    min_coord = min(world)
-    max_coord = max(world)
+    perimeter = list(set(perimeter))
+    perimeter.sort()
+
+    vision_lines = []
+    for perimeter_coord in perimeter:
+        line = bresenhams_line(coord, perimeter_coord)
+        assert line[0] == coord
+        assert line[-1] == perimeter_coord
+        vision_lines.append(line)
+
+    # vision_lines should be multiple lists of coords
+    visible_coords = set()
+    visible_coords.add(coord)
+
+    for line in vision_lines:
+        if not line:
+            continue
+        start_coord = line.pop(0)
+        assert start_coord == coord
+        for point in line:
+            if point not in world:
+                continue
+
+            visible_coords.add(point)
+
+            if any(o[0] in constants.OPAQUE_OBJECTS for o in world[point]):
+                break
 
     return visible_coords
 
+def vision_projectx(world, coord, direction):
+    return visible_coords
 
 def network_pack_object(coord, object):
     x,y = coord
@@ -443,6 +472,7 @@ class Game(object):
         'square': vision_square,
         'cone': vision_cone,
         'all': vision_all,
+        'bresenham': vision_bresenham,
     }
     def __init__(self,max_players=20,map_generator='purerandom',
                  name='Untitled',mode='ffa',id=None,vision='basic'):
