@@ -345,7 +345,7 @@ def _visible_world(world, visible):
 
 def vision_square(world, start_coord, direction):
     visible = neighbourhood(start_coord, n=3)
-    return _visible_world(world, visible)
+    return visible
 
 def vision_cone(world, coord, direction):
     visible = set()
@@ -382,11 +382,11 @@ def vision_cone(world, coord, direction):
         visible.update(look_until_wall(coord,
                                        constants.DIFFS[direction]))
 
-    return _visible_world(world, visible)
+    return visible
 
 def vision_all(world, coord, direction):
     visible_coords = set(world)
-    return _visible_world(world, visible_coords)
+    return visible_coords
 
 def vision_bresenham(world, coord, direction):
     visible_coords = set()
@@ -402,7 +402,7 @@ def vision_bresenham(world, coord, direction):
     min_coord = min(world)
     max_coord = max(world)
 
-    return _visible_world(world, visible_coords)
+    return visible_coords
 
 
 def network_pack_object(coord, object):
@@ -468,6 +468,17 @@ class Game(object):
         # Dirty stuff
         self._dirty_coords = set()
         self._dirty_players = set()
+
+    def get_vision(self):
+        return self._vision
+
+    def set_vision(self, value):
+        # This *will* throw an exception if value is not present,
+        # later FIXME we can put a proper exception, but this will do for now.
+        self.VISION_FUNCTIONS[value]
+        self._vision = value
+
+    vision = property(get_vision, set_vision)
 
     @property
     def current_players(self):
@@ -633,7 +644,9 @@ class Game(object):
     def _determine_can_see(self, coord, direction):
         vision_func = self.VISION_FUNCTIONS[self.vision]
 
-        visible_world = vision_func(self.world, coord, direction)
+        coords = vision_func(self.world, coord, direction)
+
+        visible_world = _visible_world(self.world, coords)
 
         return visible_world
 
