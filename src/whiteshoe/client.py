@@ -418,16 +418,7 @@ class ClientNetwork(object):
         self.known_world = {}
 
         if autojoin is not None:
-            if port is None:
-                port = constants.DEFAULT_PORT
-            self._server_addr = (ip, port)
-
-            p = packet_pb2.Packet()
-            p.packet_id = get_id('packet')
-            p.payload_types.append(constants.JOIN_GAME)
-            p.autojoin = True
-
-            self._send_packets([p], self._server_addr)
+            self.join((ip,port))
 
         self.game_id = None
         self.player_id = None
@@ -436,6 +427,24 @@ class ClientNetwork(object):
         self.keepalive_timer = 0
         self.last_tick = None
 
+    def join(self, addr, game_id=None):
+        ip, port = addr
+
+        if port is None:
+            port = constants.DEFAULT_PORT
+
+        self._server_addr = (ip, port)
+
+        p = packet_pb2.Packet()
+        p.packet_id = get_id('packet')
+        p.payload_types.append(constants.JOIN_GAME)
+        if game_id is None:
+            p.autojoin = True
+        else:
+            p.autojoin = False
+            p.join_game_id = game_id
+
+        self._send_packets([p], self._server_addr)
 
     def update(self):
         # Do network things
@@ -452,6 +461,7 @@ class ClientNetwork(object):
                 self.keepalive_timer -= constants.KEEPALIVE_TIME
 
                 self._send_keepalive()
+
     def _ticklet(self):
         rlist, wlist, xlist = select.select([self.socket],[],[],0.1)
         for rs in rlist:
