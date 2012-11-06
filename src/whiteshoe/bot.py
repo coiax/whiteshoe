@@ -35,7 +35,24 @@ class Bot(object):
             self.think()
 
     def think(self):
-        self.last_thought = datetime.datetime.now()
+        if self.last_thought is None:
+            time_passed = None
+        else:
+            timedelta = (datetime.datetime.now() - self.last_thought)
+            time_passed = timedelta.total_seconds()
+
+        threshold = 0.5
+
+        if time_passed is None or time_passed > threshold:
+            # Now we think.
+            try:
+                coord, object = self.network.find_me()
+            except client.PlayerNotFound:
+                pass
+            else:
+                visible = self.network.get_visible()
+
+            self.last_thought = datetime.datetime.now()
 
 if __name__=='__main__':
     cmd_main()
