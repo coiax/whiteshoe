@@ -67,35 +67,35 @@ class Server(object):
         self.socket.bind(('',self.port))
 
         while True:
-            for game in self.games:
-                packets = game.tick()
-                self._send_packets(packets)
+            try:
+                for game in self.games:
+                    packets = game.tick()
+                    self._send_packets(packets)
 
-            for addr in list(self.clients):
-                last_heard = self.clients[addr].get('last_heard')
-                if last_heard is None:
-                    continue
+                for addr in list(self.clients):
+                    last_heard = self.clients[addr].get('last_heard')
+                    if last_heard is None:
+                        continue
 
-                seconds = (datetime.datetime.now() - last_heard).seconds
-                if seconds > self.timeout:
-                    player_id = self.clients[addr]['player_id']
-                    for game in self.games:
-                        if game.is_player_in_game(player_id):
-                            packets = game.player_leave(player_id)
-                            self._send_packets(packets)
+                    seconds = (datetime.datetime.now() - last_heard).seconds
+                    if seconds > self.timeout:
+                        player_id = self.clients[addr]['player_id']
+                        for game in self.games:
+                            if game.is_player_in_game(player_id):
+                                packets = game.player_leave(player_id)
+                                self._send_packets(packets)
 
-                    del self.clients[addr]
-
-
-            rlist, wlist, xlist = select.select([self.socket],[],[],0.05)
-
-            display_stats(self.stats)
+                        del self.clients[addr]
 
 
-            for rs in rlist:
-                data, addr = rs.recvfrom(4096)
+                rlist, wlist, xlist = select.select([self.socket],[],[],0.05)
 
-                try:
+                display_stats(self.stats)
+
+
+                for rs in rlist:
+                    data, addr = rs.recvfrom(4096)
+
                     packet = packet_pb2.Packet.FromString(data)
                     self.stats['packets_recieved'] += 1
                     self.stats['bytes_recieved'] += len(data)
@@ -123,8 +123,13 @@ class Server(object):
 
                     self.clients[addr]['last_heard'] = datetime.datetime.now()
 
-                except Exception as e:
-                    traceback.print_exc()
+            except KeyboardInterrupt:
+                # Cease serving, we've been interupted
+                print()
+                break
+
+            except Exception as e:
+                traceback.print_exc()
 
     def _send_packets(self, packets):
         for packet_player_id, packet in packets:
