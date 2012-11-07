@@ -143,6 +143,14 @@ def neighbourhood(coord,n=1):
             coords.append((i,j))
     return coords
 
+def cardinal_neighbourhood((x,y)):
+    return [
+        (x, y + 1),
+        (x, y - 1),
+        (x + 1, y),
+        (x - 1, y),
+    ]
+
 def bytes_to_human(bytes):
     # 0 for bytes, 1 for k, 2 for meg, 3 for gig
     # Thanks to Toby/TheNerd for this function

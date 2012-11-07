@@ -9,17 +9,19 @@ import traceback
 import sys
 import copy
 import argparse
+import operator
 
 import constants
 import packet_pb2
 from utility import (neighbourhood, get_id, bytes_to_human, dict_difference,
-                     bresenhams_line)
+                     bresenhams_line, cardinal_neighbourhood)
 import utility
 
 def server_main(args=None):
     # Ignore arguments for now
     p = argparse.ArgumentParser()
     p.add_argument('-v','--vision',default='cone')
+    p.add_argument('-m','--map',default='depth_first')
     ns = p.parse_args(args)
     s = Server(vars(ns))
     s.serve()
@@ -43,7 +45,8 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        g = Game(vision=options.get('vision','cone'))
+        g = Game(vision=options.get('vision','cone'),
+                 map_generator=options.get('map','purerandom'))
         self.games.append(g)
 
         self.seen_ids = []
@@ -210,7 +213,7 @@ def display_stats(stats):
     sys.stderr.flush()
 
 
-def purerandom_map(X=80,Y=24,seed=0):
+def map_purerandom(X=80,Y=24,seed=0):
     world = {}
     r = random.Random(seed)
 
@@ -222,14 +225,14 @@ def purerandom_map(X=80,Y=24,seed=0):
 
     return world
 
-def empty_map(X=80,Y=24,seed=None):
+def map_empty(X=80,Y=24,seed=None):
     world = {}
 
     for i,j in itertools.product(range(X), range(Y)):
         world[i,j] = [(constants.OBJ_EMPTY, {})]
     return world
 
-def ca_maze_map(X=80,Y=24,seed=1):
+def map_ca_maze(X=80,Y=24,seed=1):
     r = random.Random(seed)
     ca_world = {}
 
@@ -283,6 +286,65 @@ def ca_maze_map(X=80,Y=24,seed=1):
             obj = [(constants.OBJ_EMPTY, {})]
 
         world[coord] = obj
+
+    return world
+
+def map_depth_first(X=80, Y=24, seed=0):
+    r = random.Random(seed)
+
+    # The division by 2 will be important later
+    cells = list(itertools.product(range(X//2), range(Y//2)))
+
+    initial_cell = r.choice(cells)
+    current_cell = initial_cell
+
+    visited = set()
+    visited.add(current_cell)
+
+    removed_walls = set()
+
+    stack = []
+
+    while set(cells) - visited:
+        neighbours = set(cardinal_neighbourhood(current_cell))
+        neighbours &= set(cells)
+
+        # If the current cell has any neighbours which have not been visited
+        if neighbours - visited:
+            # Choose random one of the unvisited neighbours
+            neighbour = r.choice(list(neighbours - visited))
+            # Push the current cell to the stack
+            stack.append(current_cell)
+            # Remove the wall between the current cell and the chosen cell
+            removed_walls.add((neighbour, current_cell))
+            # Make the chosen cell the current cell and mark it as visited
+            current_cell = neighbour
+            visited.add(current_cell)
+        elif stack:
+            current_cell = stack.pop()
+        else:
+            current_cell = r.choice(cells)
+            visited.add(current_cell)
+
+    # Now we have a number of eliminated walls
+    world = {}
+
+    for x,y in itertools.product(range(X), range(Y)):
+        world[x,y] = [(constants.OBJ_WALL, {})]
+
+    for point_a, point_b in removed_walls:
+        real_a = (point_a[0] * 2, point_a[1] * 2)
+        real_b = (point_b[0] * 2, point_b[1] * 2)
+
+        # The removed wall is the shared neighbourhood between them
+        shared = set(cardinal_neighbourhood(real_a))
+        shared &= set(neighbourhood(real_b))
+
+        assert len(shared) == 1
+
+        world[shared.pop()] = [(constants.OBJ_EMPTY, {})]
+        world[real_a] = [(constants.OBJ_EMPTY, {})]
+        world[real_b] = [(constants.OBJ_EMPTY, {})]
 
     return world
 
@@ -433,6 +495,7 @@ def vision_bresenham(world, coord, direction):
     return visible_coords
 
 def vision_projectx(world, coord, direction):
+
     return visible_coords
 
 def network_pack_object(coord, object):
@@ -465,9 +528,10 @@ def pack_attribute(obj_attr):
 
 class Game(object):
     MAP_GENERATORS = {
-        'purerandom': purerandom_map,
-        'empty': empty_map,
-        'ca_maze':ca_maze_map
+        'purerandom': map_purerandom,
+        'empty': map_empty,
+        'ca_maze': map_ca_maze,
+        'depth_first': map_depth_first,
     }
     VISION_FUNCTIONS = {
         'square': vision_square,
