@@ -57,7 +57,7 @@ class Constants(object):
     STATUS_JOINED = 1
     STATUS_LEFT = 2
 
-    DIRECTIONS = (UP, DOWN, LEFT, RIGHT)
+    DIRECTIONS = (UP, RIGHT, DOWN, LEFT)
 
     DIFFS = {
         UP: (0, -1),
