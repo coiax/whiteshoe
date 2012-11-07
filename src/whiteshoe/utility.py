@@ -1,6 +1,10 @@
 import itertools
 import math
 import collections
+import datetime
+import logging
+
+logger = logging.getLogger(__name__)
 
 class IDCounter(object):
     def __init__(self):
@@ -15,6 +19,65 @@ class IDCounter(object):
         return new_id
 
 get_id = IDCounter().get_id
+
+class Stopwatch(object):
+    def __init__(self):
+        self.running = False
+
+        self.start_time = None
+        self.elapsed_time = None
+
+    def start(self):
+        assert not self.running
+        self.restart()
+
+    def restart(self):
+        self.running = True
+        self.start_time = datetime.datetime.now()
+
+    def stop(self):
+        self.running = False
+        self.elapsed_time = datetime.datetime.now() - self.start_time
+        return self.elapsed_time
+
+class RecurringTimer(object):
+    def __init__(self, period):
+        self.period = period
+        self.last_time = None
+
+        self.accumulated = datetime.timedelta()
+
+    def start(self):
+        self.last_time = datetime.datetime.now()
+
+    def check(self):
+        """Returns the number of periods that have passed since the last call
+        to start() or check()."""
+        if self.last_time is None:
+            # Auto start
+            self.start()
+            return 0
+
+        now = datetime.datetime.now()
+        if now < self.last_time:
+            # We've gone backwards in time. For some reason.
+            logger.warning("RecurringTimer: time's gone backwards.")
+            return 0
+
+        delta = now - self.last_time
+
+        self.accumulated += delta
+
+        seconds = self.accumulated.total_seconds()
+        amount = int(seconds // self.period)
+        if amount != 0:
+            remainder = seconds % self.period
+            self.accumulated = datetime.timedelta(0, remainder)
+
+            assert remainder < self.period
+
+        self.last_time = now
+        return amount
 
 class bidict(collections.MutableMapping):
     def __init__(self, dict_=None):
@@ -65,11 +128,11 @@ class bidict(collections.MutableMapping):
     def __contains__(self, key):
         return key in self._items
 
-def grouper(n, iterable, fillvalue=None):
+def grouper(n, iterable, fillvalue=None, izip_longest_=itertools.izip_longest):
     "Collect data into fixed-length chunks or blocks"
     # grouper(3, 'ABCDEFG', 'x') --> ABC DEF Gxx
     args = [iter(iterable)] * n
-    return itertools.izip_longest(fillvalue=fillvalue, *args)
+    return izip_longest_(fillvalue=fillvalue, *args)
 
 def neighbourhood(coord,n=1):
     coords = []
