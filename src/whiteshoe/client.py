@@ -14,6 +14,7 @@ import logging
 import constants
 import packet_pb2
 from utility import get_id, grouper
+import utility
 
 logger = logging.getLogger(__name__)
 
@@ -417,15 +418,15 @@ class ClientNetwork(object):
         self.socket = socket.socket(address_type,socket.SOCK_DGRAM)
         self.known_world = {}
 
-        if autojoin is not None:
-            self.join((ip,port))
-
         self.game_id = None
         self.player_id = None
         self.vision = None
 
-        self.keepalive_timer = 0
-        self.last_tick = None
+        self.keepalive_timer = utility.Stopwatch()
+        self.lastheard_timer = utility.Stopwatch()
+
+        if autojoin is not None:
+            self.join((ip,port))
 
     def join(self, addr, game_id=None):
         ip, port = addr
@@ -449,30 +450,26 @@ class ClientNetwork(object):
     def update(self):
         # Do network things
         self._ticklet()
-        if self.last_tick is None:
-            self.last_tick = datetime.datetime.now()
-        else:
-            diff = (datetime.datetime.now() - self.last_tick)
-            self.last_tick = datetime.datetime.now()
 
-            self.keepalive_timer += diff.seconds + (diff.microseconds*10.0**-6)
 
-            if self.keepalive_timer > constants.KEEPALIVE_TIME:
-                self.keepalive_timer -= constants.KEEPALIVE_TIME
+        if self.keepalive_timer.elapsed_seconds > constants.KEEPALIVE_TIME:
+            self._send_keepalive()
 
-                self._send_keepalive()
+        if self.lastheard_timer.elapsed_seconds > 30:
+            # Later, we'll flag the server as being disconnected, but for now
+            raise ServerDisconnect
+
 
     def _ticklet(self):
         rlist, wlist, xlist = select.select([self.socket],[],[],0.1)
         for rs in rlist:
             data, addr = rs.recvfrom(4096)
+            self.lastheard_timer.restart()
             try:
                 packet = packet_pb2.Packet.FromString(data)
 
                 for payload_type in packet.payload_types:
                     self.handlers[payload_type](packet, addr)
-
-                self.last_heard = datetime.datetime.now()
 
             except Exception as e:
                 #traceback.print_exc()
@@ -490,8 +487,8 @@ class ClientNetwork(object):
     def _send_packets(self, packets, addr):
         for packet in packets:
             self.socket.sendto(packet.SerializeToString(), addr)
-        # Don't need to keepalive if we're sending other packets
-        self.keepalive_timer = 0
+
+        self.keepalive_timer.restart()
 
     def send_command(self,cmd,arg):
         cmd_num = constants.to_numerical_constant(cmd)
@@ -604,6 +601,9 @@ class CloseProgram(ClientException):
     pass
 
 class PlayerNotFound(ClientException):
+    pass
+
+class ServerDisconnect(ClientException):
     pass
 
 if __name__=='__main__':

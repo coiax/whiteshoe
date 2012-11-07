@@ -25,20 +25,35 @@ class Stopwatch(object):
         self.running = False
 
         self.start_time = None
-        self.elapsed_time = None
+    @property
+    def elapsed_time(self):
+        if self.start_time is None:
+            return None
+        else:
+            return datetime.datetime.now() - self.start_time
+
+    @property
+    def elapsed_seconds(self):
+        return self.elapsed_time.total_seconds()
 
     def start(self):
         assert not self.running
         self.restart()
 
     def restart(self):
+        elapsed_time = self.elapsed_time
         self.running = True
         self.start_time = datetime.datetime.now()
+        return elapsed_time
 
     def stop(self):
         self.running = False
-        self.elapsed_time = datetime.datetime.now() - self.start_time
-        return self.elapsed_time
+
+        elapsed_time = self.elapsed_time
+
+        self.start_time = None
+
+        return elapsed_time
 
 class RecurringTimer(object):
     def __init__(self, period):
