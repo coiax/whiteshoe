@@ -956,8 +956,6 @@ class Game(object):
         time_diff = now - old_time
         time_diff_s = time_diff.seconds + (time_diff.microseconds * (10.0**-6))
 
-        dirty_coords = set()
-
         self._tick_bullets(time_diff_s)
         self._tick_explosions(time_diff_s)
 
