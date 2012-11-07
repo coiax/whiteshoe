@@ -42,6 +42,7 @@ class Stopwatch(object):
 
 class RecurringTimer(object):
     def __init__(self, period):
+        assert period > 0
         self.period = period
         self.last_time = None
 
