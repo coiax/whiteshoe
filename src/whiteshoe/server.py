@@ -14,6 +14,7 @@ import constants
 import packet_pb2
 from utility import (neighbourhood, get_id, bytes_to_human, dict_difference,
                      bresenhams_line)
+import utility
 
 def server_main(args=None):
     # Ignore arguments for now
@@ -493,7 +494,7 @@ class Game(object):
         self.players = []
         self.known_worlds = {}
 
-        self.last_tick = None
+        self.tick_stopwatch = utility.Stopwatch()
 
         # Dirty stuff
         self._dirty_coords = set()
@@ -945,20 +946,19 @@ class Game(object):
     def tick(self):
         # Do anything that occurs independently of network input
         # like bullets moving
-        old_time = self.last_tick
-        self.last_tick = now = datetime.datetime.now()
-
-        if old_time is None:
+        if not self.tick_stopwatch.running:
             # Can't do anything on a tick until we know how much time
             # has passed
+            self.tick_stopwatch.start()
             return ()
 
-        time_diff = now - old_time
-        time_diff_s = time_diff.seconds + (time_diff.microseconds * (10.0**-6))
+        elapsed = self.tick_stopwatch.stop()
+        time_diff_s = elapsed.total_seconds()
 
         self._tick_bullets(time_diff_s)
         self._tick_explosions(time_diff_s)
 
+        self.tick_stopwatch.start()
         return self._flush_dirty()
 
     def _tick_bullets(self, time_passed):
