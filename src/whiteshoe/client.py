@@ -197,7 +197,7 @@ class GameScene(object):
         else:
             self.draw_infobar()
             self.draw_viewport(self.data.get('topleft',(0,0)))
-            pass
+            curses.doupdate()
 
     def draw_viewport(self, topleft):
         visible = self.network.get_visible()
@@ -240,7 +240,8 @@ class GameScene(object):
         else:
             self.viewport.move(0,0)
             curses.curs_set(0) # hide cursor
-        self.viewport.refresh()
+
+        self.viewport.noutrefresh()
 
     def draw_infobar(self):
         assert self.infobar_type in ('rightside', 'bottom')
@@ -278,7 +279,7 @@ class GameScene(object):
         self.infobar.addstr(0,0,line1)
         self.infobar.addstr(1,0,line2)
 
-        self.infobar.refresh()
+        self.infobar.noutrefresh()
 
     def display_character(self, object, history=False):
         display_chr = None
