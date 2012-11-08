@@ -21,10 +21,13 @@ class IDCounter(object):
 get_id = IDCounter().get_id
 
 class Stopwatch(object):
-    def __init__(self):
+    def __init__(self, start=False):
         self.running = False
 
         self.start_time = None
+
+        if start:
+            self.start()
     @property
     def elapsed_time(self):
         if self.start_time is None:

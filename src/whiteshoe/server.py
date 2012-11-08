@@ -73,12 +73,9 @@ class Server(object):
                     self._send_packets(packets)
 
                 for addr in list(self.clients):
-                    last_heard = self.clients[addr].get('last_heard')
-                    if last_heard is None:
-                        continue
+                    last_heard = self.clients[addr]['last_heard']
 
-                    seconds = (datetime.datetime.now() - last_heard).seconds
-                    if seconds > self.timeout:
+                    if last_heard.elapsed_seconds > self.timeout:
                         player_id = self.clients[addr]['player_id']
                         for game in self.games:
                             if game.is_player_in_game(player_id):
@@ -104,7 +101,8 @@ class Server(object):
 
                     if addr not in self.clients:
                         self.clients[addr] = {
-                            'player_id': get_id('player')
+                            'player_id': get_id('player'),
+                            'last_heard': utility.Stopwatch(start=True)
                         }
 
                     # disabled while we're debugging
@@ -120,11 +118,11 @@ class Server(object):
                     for payload_type in packet.payload_types:
                         self.handlers[payload_type](packet, addr)
 
+                    self.clients[addr]['last_heard'].restart()
 
-                    self.clients[addr]['last_heard'] = datetime.datetime.now()
 
             except KeyboardInterrupt:
-                # Cease serving, we've been interupted
+                # Print an extra newline, because of the live statistics
                 print()
                 break
 
