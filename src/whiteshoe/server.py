@@ -23,6 +23,7 @@ def server_main(args=None):
     p = argparse.ArgumentParser()
     p.add_argument('-v','--vision',default='cone')
     p.add_argument('-m','--map',default='depth_first')
+    p.add_argument('-q','--quiet',action='store_true',default=False)
     ns = p.parse_args(args)
     s = Server(vars(ns))
     s.serve()
@@ -49,6 +50,8 @@ class Server(object):
         g = Game(vision=options.get('vision','cone'),
                  map_generator=options.get('map','purerandom'))
         self.games.append(g)
+
+        self.display_stats = not options['quiet']
 
         self.seen_ids = []
 
@@ -97,7 +100,8 @@ class Server(object):
 
                 rlist, wlist, xlist = select.select([self.socket],[],[],0.05)
 
-                display_stats(self.stats)
+                if self.display_stats:
+                    display_stats(self.stats)
 
 
                 for rs in rlist:
