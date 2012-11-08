@@ -901,12 +901,13 @@ class Game(object):
             # Player can't move to that location, no move
             self.world[location].append(player)
 
-            # Special case stabbing things.
-            for object in self.world[new_location]:
-                if object[0] in constants.CAN_STAB:
-                    self._damage_object(new_location, object,
-                                        constants.STAB_DAMAGE)
-                    self._mark_dirty_cell(new_location)
+            if new_location in self.world:
+                # Special case stabbing things.
+                for object in self.world[new_location]:
+                    if object[0] in constants.CAN_STAB:
+                        self._damage_object(new_location, object,
+                                            constants.STAB_DAMAGE)
+                        self._mark_dirty_cell(new_location)
 
         else:
             player_id = player[1]['number']
