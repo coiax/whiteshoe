@@ -10,6 +10,7 @@ import sys
 import copy
 import argparse
 import operator
+import time
 
 import constants
 import packet_pb2
@@ -74,15 +75,24 @@ class Server(object):
 
                 for addr in list(self.clients):
                     last_heard = self.clients[addr]['last_heard']
+                    last_sent = self.clients[addr]['last_sent']
+                    player_id = self.clients[addr]['player_id']
 
                     if last_heard.elapsed_seconds > self.timeout:
-                        player_id = self.clients[addr]['player_id']
                         for game in self.games:
                             if game.is_player_in_game(player_id):
                                 packets = game.player_leave(player_id)
                                 self._send_packets(packets)
 
                         del self.clients[addr]
+
+                    elif last_sent.elapsed_seconds > constants.KEEPALIVE_TIME:
+                        p = packet_pb2.Packet()
+                        p.packet_id = get_id('packet')
+                        p.payload_types.append(constants.KEEP_ALIVE)
+                        p.timestamp = int(time.time())
+
+                        self._send_packets(((player_id, p),))
 
 
                 rlist, wlist, xlist = select.select([self.socket],[],[],0.05)
@@ -102,7 +112,8 @@ class Server(object):
                     if addr not in self.clients:
                         self.clients[addr] = {
                             'player_id': get_id('player'),
-                            'last_heard': utility.Stopwatch(start=True)
+                            'last_heard': utility.Stopwatch(start=True),
+                            'last_sent': utility.Stopwatch()
                         }
 
                     # disabled while we're debugging
@@ -139,6 +150,7 @@ class Server(object):
                     self.socket.sendto(packet.SerializeToString(), addr)
                     self.stats['packets_sent'] += 1
                     self.stats['bytes_sent'] += packet.ByteSize()
+                    addr_dict['last_sent'].restart()
                     sent = True
                     break
 
