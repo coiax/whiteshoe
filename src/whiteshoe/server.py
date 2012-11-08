@@ -693,52 +693,60 @@ class Game(object):
 
         return packets
 
-    def _update_known_world(self, player_id, visible_world):
+    def _update_known_world(self, player_id, visible, dirty):
         known_world = self.known_worlds[player_id]
-        original = copy.deepcopy(known_world)
 
-        def historical_decay(coords):
-            # Decay the things we have in vision
-            for coord in set(coords):
-                if coord not in known_world:
-                    continue
-                for obj,attr in list(known_world[coord]):
-                    if obj in constants.HISTORICAL_OBJECTS:
+        intersection_coords = visible & dirty
+
+        changed = set()
+
+        # Intersection coords are in direct vision.
+        # so we don't historify them, we merely replace the contents
+        # of them
+
+        for coord in set(known_world) - visible:
+            assert coord in self.world
+
+            to_remove = []
+
+            for obj,attr in known_world[coord]:
+                if obj in constants.HISTORICAL_OBJECTS:
+                    marked_historical = attr.get('historical', False)
+
+                    if not marked_historical:
                         attr['historical'] = True
-                    else:
-                        known_world[coord].remove((obj,attr))
+                        changed.add(coord)
+                else:
+                    to_remove.append((obj,attr))
 
-        historical_decay(visible_world)
+            for doomed in to_remove:
+                known_world[coord].remove(doomed)
 
-        for coord, visible_objects in visible_world.items():
-            known_objects = known_world.get(coord,[])
+        for coord in intersection_coords:
+            assert coord in self.world
 
-            # We will compare these two later
-            start_state = list(known_objects)
-            new_state = list(known_objects)
+            if known_world.get(coord) == self.world[coord]:
+                # No change.
+                continue
+            else:
+                known_world[coord] = new_contents = []
+                for obj,attr in self.world[coord]:
+                    new_contents.append((obj, attr.copy()))
+                changed.add(coord)
 
-            historical_known = [o for o in known_objects
-                                if o[0] in constants.HISTORICAL_OBJECTS]
+        for coord in dirty:
+            for obj,attr in self.world[coord]:
+                if obj in constants.ALWAYS_VISIBLE_OBJECTS:
+                    if coord not in known_world:
+                        known_world[coord] = []
+                    known_world[coord].append((obj,dict(attr)))
+                    changed.add(coord)
 
-            historical_visibles = [o for o in visible_objects
-                                   if o[0] in constants.HISTORICAL_OBJECTS]
+        if changed:
+            assert changed & (dirty | visible)
 
-            if historical_visibles:
-                for known in historical_known:
-                    new_state.remove(known)
+        return changed
 
-            for object in visible_objects:
-                new_state.append(object)
-
-            if start_state != new_state:
-                known_world[coord] = new_state
-
-        # Now, historical decay
-        historical_decay(set(known_world) - set(visible_world))
-
-        changed_coords = dict_difference(original, known_world)
-
-        return changed_coords
 
     def player_leave(self, player_id):
         assert player_id in self.players
@@ -760,9 +768,9 @@ class Game(object):
 
         coords = vision_func(self.world, coord, direction)
 
-        visible_world = _visible_world(self.world, coords)
+        #visible_world = _visible_world(self.world, coords)
 
-        return visible_world
+        return coords
 
     def _send_player_vision(self,player_id, coords, all=False):
         #location, player = self._find_player(player_id)
@@ -975,55 +983,28 @@ class Game(object):
                 continue
 
             direction = playerobj[1]['direction']
-            visible_world = self._determine_can_see(location, direction)
-            changed = self._update_known_world(player_id, visible_world)
+
+            visible = self._determine_can_see(location, direction)
+            # So we have the list of coordinates that are in direct vision
+
+            dirty = self._dirty_coords
 
             if player_id in self._dirty_players:
                 # yes, for now, if a player is marked dirty, then we
                 # just send his whole known world
-                known_world = self.known_worlds[player_id]
-                p = self._send_player_vision(player_id, set(known_world),
-                                             all=True)
+                changed = self._update_known_world(player_id, visible, visible)
+
+                p = self._send_player_vision(player_id, changed)
                 packets.extend(p)
-            elif self._dirty_coords:
-                p = self._send_player_vision(player_id,
-                                             self._dirty_coords | changed)
-                packets.extend(p)
+            else:
+                changed = self._update_known_world(player_id, visible, dirty)
+
+                if changed:
+                    p = self._send_player_vision(player_id, changed)
+                    packets.extend(p)
 
         self._dirty_players.clear()
         self._dirty_coords.clear()
-
-        return packets
-
-    def _mark_dirty(self, coordinates, ignored=()):
-        # ignored is a list of player_ids
-        packets = []
-        for player_id in set(self.players) - set(ignored):
-            try:
-                location, playerobj = self._find_player(player_id)
-            except PlayerNotFound:
-                # If player isn't present in the map, then we don't have
-                # to worry about vision for them
-                continue
-
-            direction = playerobj[1]['direction']
-
-            visible_world = self._determine_can_see(location, direction)
-
-            #dirty_locations = set(visible_world) & set(coordinates)
-            #if dirty_locations:
-            # This dirty locations stuff should be replaced with a
-            # method checking the difference between the old known world
-            # and the new known world, and then updating the player
-            # about that
-
-            # To provide good (rather than correct) behaviour, the server
-            # will now just scream vision packets at clients
-
-            changed_coords = self._update_known_world(player_id,
-                                                      visible_world)
-            packets.extend(self._send_player_vision(player_id,
-                                                    changed_coords))
 
         return packets
 
