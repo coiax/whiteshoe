@@ -37,7 +37,10 @@ class Stopwatch(object):
 
     @property
     def elapsed_seconds(self):
-        return self.elapsed_time.total_seconds()
+        if self.start_time is None:
+            return None
+        else:
+            return self.elapsed_time.total_seconds()
 
     def start(self):
         assert not self.running

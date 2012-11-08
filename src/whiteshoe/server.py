@@ -117,7 +117,7 @@ class Server(object):
                         self.clients[addr] = {
                             'player_id': get_id('player'),
                             'last_heard': utility.Stopwatch(start=True),
-                            'last_sent': utility.Stopwatch()
+                            'last_sent': utility.Stopwatch(start=True)
                         }
 
                     # disabled while we're debugging
