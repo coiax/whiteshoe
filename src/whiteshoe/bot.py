@@ -35,7 +35,7 @@ class Bot(object):
         while True:
             self.network.update()
             times = self.thought_timer.check()
-            for i in range(times):
+            if times:
                 self.think()
 
     def think(self):
