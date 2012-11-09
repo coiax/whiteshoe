@@ -580,6 +580,7 @@ class Game(object):
 
         self.players = []
         self.known_worlds = {}
+        self.events = []
 
         self.tick_stopwatch = utility.Stopwatch()
 
@@ -657,6 +658,7 @@ class Game(object):
 
     def _remove_player(self, player_id):
         location, player = self._find_player(player_id)
+
         self.world[location].remove(player)
 
         self._mark_dirty_cell(location)
@@ -885,7 +887,10 @@ class Game(object):
 
         handlers[cmd](player, location, arg)
 
-        packets = self._flush_dirty()
+        packets = []
+        packets.extend(self._flush_dirty())
+        packets.extend(self._event_check())
+
         return packets
 
     def _look(self, player, location, arg):
@@ -1013,6 +1018,28 @@ class Game(object):
 
         return packets
 
+    def _event_check(self):
+        packets = []
+
+
+        while self.events:
+            event = self.events.pop()
+            player_id = event[0]
+
+            if event[1] == constants.STATUS_DAMAGED:
+                p = packet_pb2.Packet()
+                p.packet_id = get_id('packet')
+                p.payload_types.append(constants.GAME_STATUS)
+                p.status_game_id = self.id
+                p.status = constants.STATUS_DAMAGED
+
+                p.responsible_id = event[2]
+                p.damage_type = event[3]
+
+                packets.append((player_id, p))
+
+        return packets
+
     def tick(self):
         # Do anything that occurs independently of network input
         # like bullets moving
@@ -1022,14 +1049,16 @@ class Game(object):
             self.tick_stopwatch.start()
             return ()
 
-        elapsed = self.tick_stopwatch.stop()
+        elapsed = self.tick_stopwatch.restart()
         time_diff_s = elapsed.total_seconds()
 
         self._tick_bullets(time_diff_s)
         self._tick_explosions(time_diff_s)
 
-        self.tick_stopwatch.start()
-        return self._flush_dirty()
+        packets = []
+        packets.extend(self._flush_dirty())
+        packets.extend(self._event_check())
+        return packets
 
     def _tick_bullets(self, time_passed):
         # Pair of (coord, object)
@@ -1118,17 +1147,28 @@ class Game(object):
                 self._mark_dirty_cell(coord)
 
     def _damage_object(self, coord, object, amount):
+        is_player = object[0] == constants.OBJ_PLAYER
+
         hp = object[1].get('hp', 0)
         hp -= amount
 
         object[1]['hp'] = hp
 
         if hp <= 0:
-            if object[0] != constants.OBJ_PLAYER:
-                self.world[coord].remove(object)
-            else:
+            if is_player:
                 player_id = object[1]['number']
                 self._kill_player(player_id)
+            else:
+                self.world[coord].remove(object)
+        elif is_player:
+            player_id = object[1]['number']
+            event_type = constants.STATUS_DAMAGED
+            # TODO later put the damage type, and MAYBE the person
+            # responsible
+            responsible_id = -1
+            damage_type = 0
+            event = (player_id, event_type, responsible_id, damage_type)
+            self.events.append(event)
 
 
 class ServerException(Exception):

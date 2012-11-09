@@ -176,20 +176,17 @@ class GameScene(object):
 
         self.network.update()
 
+        for event in self.network.get_events():
+            if event[0] in {constants.STATUS_DAMAGED, constants.STATUS_DEATH}:
+                curses.flash()
+
+
         # TODO currently window viewport is based on the 0,0 topleft
         # corner, and we want to be able to move around
         self.viewport.clear()
 
         try:
             my_coord, player = self.network.find_me()
-            hp = player[1]['hp']
-            try:
-                if hp < self._last_hp:
-                    curses.flash()
-            except AttributeError:
-                pass
-            finally:
-                self._last_hp = hp
 
         except PlayerNotFound:
             # Do not draw the viewport
@@ -423,6 +420,8 @@ class ClientNetwork(object):
         self.player_id = None
         self.vision = None
 
+        self.events = []
+
         self.keepalive_timer = utility.Stopwatch()
         self.lastheard_timer = utility.Stopwatch()
 
@@ -520,6 +519,11 @@ class ClientNetwork(object):
     def get_visible(self):
         return self.known_world
 
+    def get_events(self):
+        e = self.events
+        self.events = []
+        return e
+
     # packet handlers
     def _games_running(self, packet, addr):
         pass
@@ -585,12 +589,50 @@ class ClientNetwork(object):
         pass
 
     def _game_status(self, packet, addr):
-        if packet.status == constants.STATUS_JOINED:
+        status = packet.status
+
+        event = None
+
+        if status == constants.STATUS_JOINED:
             self.game_id = packet.status_game_id
             self.player_id = packet.your_player_id
             self.vision = packet.game_vision
-        elif packet.status == constants.STATUS_LEFT:
+            event = (status, self.game_id, self.player_id, self.vision)
+
+        elif status == constants.STATUS_LEFT:
             self.game_id = None
+
+        elif status == constants.STATUS_SPAWN:
+            pass
+
+        elif status in {constants.STATUS_DEATH, constants.STATUS_DAMAGED}:
+            responsible = packet.responsible_id
+            if responsible == -1:
+                responsible = None
+
+            damage_type = packet.damage_type
+
+            event = (status, responsible, damage_type)
+        elif status == constants.STATUS_KILL:
+            event = (status, packet.victim_id)
+        elif status == constants.STATUS_GAMEPAUSE:
+            unpause_time = packet.unpause_time
+            if unpause_time:
+                unpause_time = datetime.datetime(*unpause_time)
+
+            else:
+                unpause_time = None
+
+
+            event = (status, unpause_time, packet.countdown)
+        elif status == constants.STATUS_GAMERESUME:
+            pass
+
+        if event is None:
+            event = (status,)
+
+        self.events.append(event)
+
 
 class ClientException(Exception):
     pass

@@ -56,6 +56,12 @@ class Constants(object):
 
     STATUS_JOINED = 1
     STATUS_LEFT = 2
+    STATUS_DEATH = 3
+    STATUS_DAMAGED = 4
+    STATUS_SPAWN = 5
+    STATUS_KILL = 6
+    STATUS_GAMEPAUSE = 7
+    STATUS_GAMERESUME = 8
 
     DIRECTIONS = (UP, RIGHT, DOWN, LEFT)
 

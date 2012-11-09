@@ -68,10 +68,40 @@ message Packet {
     optional int32 status_game_id = 800;
     optional int32 status = 801;
 
+    // general
     optional int32 your_player_id = 802;
+
+    // status joined
     optional string game_name = 803;
     optional string game_mode = 804;
     optional int32 game_max_players = 805;
     optional int32 game_current_players = 806;
     optional string game_vision = 807;
+
+    // status left
+    // status spawn
+
+    // status death (You've died.)
+    // status damaged (You've been damaged, but haven't died.)
+
+    optional sint32 responsible_id = 808;
+    // Might not include the person responsible in some circumstances
+    // such as crime novels. Is set to -1 in this case.
+    optional int32 damage_type = 809;
+
+    // status kill (You've killed somone; you monster.)
+    optional int32 victim_id = 810;
+
+    // status gamepause
+    // (The game has been paused, no inputs will be accepted.
+    //  If unpause_time is given, the game will unpause at this time.)
+    repeated sint32 unpause_time = 811;
+    // if true, countdown to the unpausing.
+    optional bool countdown = 812;
+    // in the format: year, month, day, hour, minute, second, microsecond
+
+    // status gameresume
+    // (The game has been resumed, inputs are now accepted.)
+
+
 }
