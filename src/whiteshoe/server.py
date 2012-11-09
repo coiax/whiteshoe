@@ -436,9 +436,13 @@ def vision_cone(world, coord, direction):
     visible.add(coord)
 
     main_direction = constants.DIFFS[direction]
-    behind_you = main_direction[0] * -1, main_direction[1] * -1
+    behind_you_direction = main_direction[0] * -1, main_direction[1] * -1
 
-    visible.add((coord[0] + behind_you[0], coord[1] + behind_you[1]))
+    behind_you = (coord[0] + behind_you_direction[0],
+                  coord[1] + behind_you_direction[1])
+
+    if behind_you in world:
+        visible.add(behind_you)
 
 
     # First, everything in the direction the player is looking
@@ -769,6 +773,7 @@ class Game(object):
         coords = vision_func(self.world, coord, direction)
 
         #visible_world = _visible_world(self.world, coords)
+        assert coords <= set(self.world)
 
         return coords
 
