@@ -35,7 +35,7 @@ class Constants(object):
     N8 = 8
     N9 = 9
 
-    _constants = vars().items()
+    _constants = list(vars().items())
     _constants.sort(key=operator.itemgetter(0))
     _constants_table = [c[1] for c in _constants]
     del _constants
