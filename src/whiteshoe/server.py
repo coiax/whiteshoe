@@ -98,7 +98,7 @@ class Server(object):
                         self._send_packets(((player_id, p),))
 
 
-                rlist, wlist, xlist = select.select([self.socket],[],[],0.05)
+                rlist, wlist, xlist = select.select((self.socket,),(),(),0.05)
 
                 if self.display_stats:
                     display_stats(self.stats)
@@ -137,8 +137,10 @@ class Server(object):
 
 
             except KeyboardInterrupt:
-                # Print an extra newline, because of the live statistics
-                print()
+                if self.display_stats:
+                    # Print an extra newline, because of the live statistics
+                    print()
+                # TODO Notify all connected clients of server shutdown
                 break
 
             except Exception as e:
@@ -164,7 +166,7 @@ class Server(object):
         reply = packet_pb2.Packet()
         reply.payload_types.append(constants.GAMES_RUNNING)
 
-        reply.packet_id = get_id()
+        reply.packet_id = get_id('packet')
 
         for game in self.games:
             game_message = reply.games.add()
@@ -182,7 +184,7 @@ class Server(object):
         max_players = packet.max_players or None
         map_generator = packet.map_generator or None
         game_name = packet.new_game_name or None
-        game_mode = packet.new_game_mode or none
+        game_mode = packet.new_game_mode or None
         game_id = get_id('game')
 
         g = Game(max_players,map_generator,game_name,game_mode,game_id)
@@ -213,10 +215,18 @@ class Server(object):
 
         game = [g for g in self.games if g.id == game_id][0]
 
-        assert game.is_player_in_game(player_id)
+        if not game.is_player_in_game(player_id):
+            p = packet_pb2.Packet()
+            p.packet_id = get_id('packet')
+            p.payload_types.append(constants.ERROR)
+            p.error_type = constants.ERROR_NOT_IN_GAME
+            self._send_packets(((player_id, p),))
+        else:
+            action = packet.action
+            arguments = packet.argument
 
-        packets = game.player_action(player_id, packet.action, packet.argument)
-        self._send_packets(packets)
+            packets = game.player_action(player_id, action, arguments)
+            self._send_packets(packets)
 
     def _keep_alive(self, packet, addr):
         pass

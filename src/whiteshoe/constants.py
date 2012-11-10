@@ -54,6 +54,8 @@ class Constants(object):
     KEEP_ALIVE = 7
     GAME_STATUS = 8
 
+    ERROR_NOT_IN_GAME = 1
+
     STATUS_JOINED = 1
     STATUS_LEFT = 2
     STATUS_DEATH = 3
