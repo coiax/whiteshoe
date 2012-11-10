@@ -677,6 +677,15 @@ class Game(object):
     def _kill_player(self, player_id):
         self._remove_player(player_id)
         self.known_worlds[player_id] = {}
+
+        event_type = constants.STATUS_DEATH
+            # TODO later put the damage type, and MAYBE the person
+            # responsible
+        responsible_id = -1
+        damage_type = 0
+        event = (player_id, event_type, responsible_id, damage_type)
+        self.events.append(event)
+
         self._spawn_player(player_id)
 
     def player_join(self,player_id):
@@ -898,8 +907,8 @@ class Game(object):
         handlers[cmd](player, location, arg)
 
         packets = []
-        packets.extend(self._flush_dirty())
         packets.extend(self._event_check())
+        packets.extend(self._flush_dirty())
 
         return packets
 
@@ -1030,23 +1039,26 @@ class Game(object):
 
     def _event_check(self):
         packets = []
-
+        p = None
 
         while self.events:
             event = self.events.pop()
             player_id = event[0]
 
-            if event[1] == constants.STATUS_DAMAGED:
+            if p is None:
                 p = packet_pb2.Packet()
                 p.packet_id = get_id('packet')
                 p.payload_types.append(constants.GAME_STATUS)
                 p.status_game_id = self.id
-                p.status = constants.STATUS_DAMAGED
+
+            if event[1] in {constants.STATUS_DAMAGED, constants.STATUS_DEATH}:
+                p.status = event[1]
 
                 p.responsible_id = event[2]
                 p.damage_type = event[3]
 
                 packets.append((player_id, p))
+                p = None
 
         return packets
 
@@ -1066,8 +1078,8 @@ class Game(object):
         self._tick_explosions(time_diff_s)
 
         packets = []
-        packets.extend(self._flush_dirty())
         packets.extend(self._event_check())
+        packets.extend(self._flush_dirty())
         return packets
 
     def _tick_bullets(self, time_passed):

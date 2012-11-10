@@ -613,6 +613,9 @@ class ClientNetwork(object):
             damage_type = packet.damage_type
 
             event = (status, responsible, damage_type)
+            if status == constants.STATUS_DEATH:
+                self.known_world.clear()
+
         elif status == constants.STATUS_KILL:
             event = (status, packet.victim_id)
         elif status == constants.STATUS_GAMEPAUSE:
