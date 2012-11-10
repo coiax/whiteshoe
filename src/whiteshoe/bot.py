@@ -29,14 +29,18 @@ class Bot(object):
         self.thought_timer = utility.RecurringTimer(self.period)
 
     def go(self):
-        self.network = client.ClientNetwork()
-        self.network.join(self.addr, self.game_id)
+        try:
+            self.network = client.ClientNetwork()
+            self.network.join(self.addr, self.game_id)
 
-        while True:
-            self.network.update()
-            times = self.thought_timer.check()
-            if times:
-                self.think()
+            while True:
+                    self.network.update()
+                    times = self.thought_timer.check()
+                    if times:
+                        self.think()
+        except KeyboardInterrupt:
+            # TODO send server disconnection packet
+            return
 
     def think(self):
         try:
