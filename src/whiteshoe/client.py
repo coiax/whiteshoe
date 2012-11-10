@@ -298,7 +298,7 @@ class GameScene(object):
 
         if obj == constants.OBJ_PLAYER:
             direction = attr['direction']
-            if attr['number'] == self.network.player_id:
+            if attr['player_id'] == self.network.player_id:
                 colour = curses.color_pair(1)# | curses.A_REVERSE
             else:
                 colour = curses.color_pair(2)
@@ -509,7 +509,7 @@ class ClientNetwork(object):
             for coord, objects in self.known_world.items():
                 for object in objects:
                     if (object[0] == constants.OBJ_PLAYER and
-                        object[1]['number'] == self.player_id):
+                        object[1]['player_id'] == self.player_id):
 
                         return coord, object
 
@@ -535,7 +535,7 @@ class ClientNetwork(object):
         // objects consists of 4-tuples: x,y,obj_type,attr_id
         // attr_id is either -1 for no attributes, or an index of an attribute
         message Attribute {
-            optional int32 number = 1;
+            optional int32 player_id = 1;
             optional int32 direction = 2;
             optional int32 team = 3;
             optional int32 hp_max = 4;

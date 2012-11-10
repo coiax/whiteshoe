@@ -46,7 +46,7 @@ message Packet {
     // objects consists of 4-tuples: x,y,obj_type,attr_id
     // attr_id is either -1 for no attributes, or an index of an attribute
     message Attribute {
-        optional int32 number = 1;
+        optional int32 player_id = 1;
         optional int32 direction = 2;
         optional int32 team = 3;
         optional int32 hp_max = 4;

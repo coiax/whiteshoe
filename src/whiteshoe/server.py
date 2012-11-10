@@ -631,7 +631,7 @@ class Game(object):
         start_ammo = 10
 
         player = (constants.OBJ_PLAYER,
-                  {'number':player_id,
+                  {'player_id':player_id,
                    'direction': direction,
                    'team':player_id,
                    'hp':start_max_hp,
@@ -849,12 +849,12 @@ class Game(object):
         locations = self.find_objs(obj_type)
         return [pair[0] for pair in locations]
 
-    def _find_player(self, number):
+    def _find_player(self, player_id):
         # Find player location
         location = None
 
         for coord, object in self.find_objs(constants.OBJ_PLAYER):
-            if object[1]['number'] == number:
+            if object[1]['player_id'] == player_id:
                 location = coord
                 player = object
                 break
@@ -895,9 +895,9 @@ class Game(object):
 
     def _look(self, player, location, arg):
         player[1]['direction'] = arg
-        player_number = player[1]['number']
+        player_id = player[1]['player_id']
         self._mark_dirty_cell(location)
-        self._mark_dirty_player(player_number)
+        self._mark_dirty_player(player_id)
 
     def _move(self, player, location, arg):
         # We'll return this list later
@@ -932,7 +932,7 @@ class Game(object):
                         self._mark_dirty_cell(new_location)
 
         else:
-            player_id = player[1]['number']
+            player_id = player[1]['player_id']
             direction = player[1]['direction']
 
             self.world[new_location].append(player)
@@ -943,7 +943,7 @@ class Game(object):
 
     def _fire(self, player, location, arg):
         direction = player[1]['direction']
-        player_id = player[1]['number']
+        player_id = player[1]['player_id']
         power = arg
 
         attr = player[1]
@@ -1156,12 +1156,12 @@ class Game(object):
 
         if hp <= 0:
             if is_player:
-                player_id = object[1]['number']
+                player_id = object[1]['player_id']
                 self._kill_player(player_id)
             else:
                 self.world[coord].remove(object)
         elif is_player:
-            player_id = object[1]['number']
+            player_id = object[1]['player_id']
             event_type = constants.STATUS_DAMAGED
             # TODO later put the damage type, and MAYBE the person
             # responsible
