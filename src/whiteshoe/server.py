@@ -435,11 +435,11 @@ def _visible_world(world, visible):
                 visible_world[coord].append((obj,dict(attr)))
     return visible_world
 
-def vision_square(world, start_coord, direction):
+def vision_square(world, start_coord, direction=None):
     visible = neighbourhood(start_coord, n=3)
     return visible
 
-def vision_cone(world, coord, direction):
+def vision_cone(world, coord, direction=None):
     visible = set()
     # The square you are in is always visible as well one square
     # behind you
@@ -480,7 +480,7 @@ def vision_cone(world, coord, direction):
 
     return visible
 
-def vision_all(world, coord, direction):
+def vision_all(world, coord, direction=None):
     visible_coords = set(world)
     return visible_coords
 
@@ -577,6 +577,9 @@ class Game(object):
 
         self.max_players = max_players
         self.world = self.MAP_GENERATORS[map_generator]()
+
+        #self.world = pretty_walls(self.world)
+
         print("World ({0}) generated.".format(map_generator))
         self.name = name
         self.mode = mode
@@ -1020,19 +1023,19 @@ class Game(object):
 
             dirty = self._dirty_coords
 
+            changed = ()
+
             if player_id in self._dirty_players:
                 # yes, for now, if a player is marked dirty, then we
                 # just send his whole known world
                 changed = self._update_known_world(player_id, visible, visible)
 
-                p = self._send_player_vision(player_id, changed)
-                packets.extend(p)
             else:
                 changed = self._update_known_world(player_id, visible, dirty)
 
-                if changed:
-                    p = self._send_player_vision(player_id, changed)
-                    packets.extend(p)
+            if changed:
+                p = self._send_player_vision(player_id, changed)
+                packets.extend(p)
 
         self._dirty_players.clear()
         self._dirty_coords.clear()
@@ -1184,6 +1187,7 @@ class Game(object):
                 self._kill_player(player_id)
             else:
                 self.world[coord].remove(object)
+                self._mark_dirty_cell(coord)
         elif is_player:
             player_id = object[1]['player_id']
             event_type = constants.STATUS_DAMAGED
