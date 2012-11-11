@@ -70,3 +70,4 @@ nosetests.xml
 
 
 *_pb2.py
+whiteshoe*.tar*

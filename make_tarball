@@ -1,0 +1,35 @@
+#!/usr/bin/python
+import subprocess
+import re
+import sys
+import os.path
+
+namefmt = 'whiteshoe-{}.tar.gz'
+
+description = subprocess.check_output(('git','describe'))
+#v0.0.0 or v0.0.0-93-g4c68dac
+pattern = r'v(\d+)\.(\d+).(\d+)(?:-(\d+)-(.+))?'
+
+match = re.match(pattern, description)
+
+groups = match.groups()
+
+major, minor, patch, commitno, hash = groups
+
+if commitno is None and hash is None:
+    version = '{}.{}.{}'.format(*groups)
+else:
+    version = '{}.{}.{}+commit.{}.{}'.format(*groups)
+
+name = namefmt.format(version)
+
+files = subprocess.check_output('git ls-tree -r --name-only HEAD',shell=True)
+files = files.split("\n")
+
+args = ['tar','-cz','-C','..','-f',name]
+for file in files:
+    if file:
+        args.append(os.path.join('whiteshoe', file))
+
+print ' '.join(args)
+subprocess.call(args)
