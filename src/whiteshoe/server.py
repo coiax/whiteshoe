@@ -723,6 +723,8 @@ class Game(object):
 
         intersection_coords = visible & dirty
 
+        av_coords = self.find_obj_locations(*constants.ALWAYS_VISIBLE_OBJECTS)
+
         changed = set()
 
         # Intersection coords are in direct vision.
@@ -743,6 +745,7 @@ class Game(object):
                         changed.add(coord)
                 else:
                     to_remove.append((obj,attr))
+                    changed.add(coord)
 
             for doomed in to_remove:
                 known_world[coord].remove(doomed)
@@ -759,7 +762,7 @@ class Game(object):
                     new_contents.append((obj, attr.copy()))
                 changed.add(coord)
 
-        for coord in dirty:
+        for coord in dirty | set(av_coords):
             for obj,attr in self.world[coord]:
                 if obj in constants.ALWAYS_VISIBLE_OBJECTS:
                     if coord not in known_world:
@@ -767,8 +770,7 @@ class Game(object):
                     known_world[coord].append((obj,dict(attr)))
                     changed.add(coord)
 
-        if changed:
-            assert changed & (dirty | visible)
+        assert changed <= set(self.world)
 
         return changed
 
@@ -854,18 +856,18 @@ class Game(object):
         out = [(player_id, packet) for packet in packets]
         return out
 
-    def find_objs(self, obj_type):
+    def find_objs(self, *obj_types):
         locations = []
         for coord, objects in self.world.items():
             for obj, attr in objects:
-                if obj == obj_type:
+                if obj in obj_types:
                     pair = (coord, (obj,attr))
                     locations.append(pair)
 
         return locations
 
-    def find_obj_locations(self, obj_type):
-        locations = self.find_objs(obj_type)
+    def find_obj_locations(self, *obj_types):
+        locations = self.find_objs(*obj_types)
         return [pair[0] for pair in locations]
 
     def _find_player(self, player_id):
