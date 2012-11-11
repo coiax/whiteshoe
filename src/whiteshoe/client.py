@@ -49,6 +49,7 @@ def main2(stdscr, ns):
     data = {}
     data['network'] = ClientNetwork(autojoin=autojoin_addr,automake=True)
     data['hallu'] = False
+    data['empty-?'] = False
 
     scene = GameScene(data)
     while True:
@@ -219,7 +220,7 @@ class GameScene(object):
                     self.viewport.addstr(y,x,display_chr, colour)
                 except curses.error:
                     pass
-            else:
+            elif self.data.get('empty-?'):
                 # A bold purple ? mark indicates a coordinate that is
                 # in the known_world, but has no objects, meaning it has
                 # been explicitly cleared by the network.
