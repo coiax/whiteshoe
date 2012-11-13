@@ -164,7 +164,8 @@ def neighbourhood(coord,n=1):
             coords.append((i,j))
     return coords
 
-def cardinal_neighbourhood((x,y)):
+def cardinal_neighbourhood(x_y):
+    x, y = x_y
     return [
         (x, y + 1),
         (x, y - 1),
@@ -332,7 +333,9 @@ def bresenhams_line(p1, p2):
 
     return points
 
-def bresenhams_line((x,y),(x2,y2)):
+def bresenhams_line(x_y,x2_y2):
+    x,y = x_y
+    x2, y2 = x2_y2
     """Brensenham line algorithm"""
     steep = 0
     coords = []
