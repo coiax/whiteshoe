@@ -121,6 +121,9 @@ class GameScene(object):
         max_y, max_x = stdscr.getmaxyx()
         self.size = max_x, max_y
 
+        if 'topleft' not in self.data:
+            self.data['topleft'] = [0,0]
+
         self.infobar_type = 'bottom'
         assert self.infobar_type in ('bottom', 'rightside')
 
@@ -194,7 +197,7 @@ class GameScene(object):
             pass
         else:
             self.draw_infobar()
-            self.draw_viewport(self.data.get('topleft',(0,0)))
+            self.draw_viewport(self.data['topleft'])
             curses.doupdate()
 
     def draw_viewport(self, topleft):
@@ -203,10 +206,37 @@ class GameScene(object):
 
         max_y, max_x = self.viewport.getmaxyx()
 
+        bottomright = [topleft[0] + max_x, topleft[1] + max_y]
+
         drawing = set()
-        for i in range(topleft[0], topleft[0] + max_x):
-            for j in range(topleft[1], topleft[1] + max_y):
+        for i in range(topleft[0], bottomright[0]):
+            for j in range(topleft[1], bottomright[1]):
                 drawing.add((i,j))
+
+        # drawing is the set of in-game coordinates that we are going
+        # to draw
+        while not all(topleft[i] <= my_coord[i] < bottomright[i]
+                      for i in (0,1)):
+            if bottomright[0] <= my_coord[0]:
+                topleft[0] += 1
+            if bottomright[1] <= my_coord[1]:
+                topleft[1] += 1
+            if topleft[0] > my_coord[0]:
+                topleft[0] -= 1
+            if topleft[1] > my_coord[1]:
+                topleft[1] -= 1
+
+            # Recalculate bottomright
+            bottomright = [topleft[0] + max_x, topleft[1] + max_y]
+
+        if my_coord in drawing:
+            screen_x,screen_y = (my_coord[0] - topleft[0],
+                                 my_coord[1] - topleft[1])
+            curses.curs_set(2) # block cursor
+        else:
+            screen_x, screen_y = (0,0)
+            curses.curs_set(0) # hide cursor
+
 
         for coord, objects in visible.items():
             if coord not in drawing:
@@ -231,14 +261,8 @@ class GameScene(object):
                 self.viewport.addstr(y,x,"?",purple)
                 pass
 
-        if my_coord in drawing:
-            x,y = (my_coord[0] - topleft[0], my_coord[1] - topleft[1])
-            curses.curs_set(2) # block cursor
-            self.viewport.move(y,x)
-        else:
-            self.viewport.move(0,0)
-            curses.curs_set(0) # hide cursor
-
+        # Cursor on player
+        self.viewport.move(screen_y,screen_x)
         self.viewport.noutrefresh()
 
     def draw_infobar(self):
