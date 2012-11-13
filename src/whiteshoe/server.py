@@ -575,8 +575,13 @@ class Game(object):
     def __init__(self,max_players=20,map_generator='purerandom',
                  name='Untitled',mode='ffa',id=None,vision='basic'):
 
+        # Same as random module for now, later we can change it
+        self.random = random.Random(0)
+
         self.max_players = max_players
-        self.world = self.MAP_GENERATORS[map_generator]()
+
+        generator = self.MAP_GENERATORS[map_generator]
+        self.world = generator(seed=self.random.random())
 
         #self.world = pretty_walls(self.world)
 
@@ -634,11 +639,11 @@ class Game(object):
         for obj_type in constants.SOLID_OBJECTS:
             suitable -= set(self.find_obj_locations(obj_type))
 
-        spawn_coord = random.choice(list(suitable))
+        spawn_coord = self.random.choice(list(suitable))
         suitable.remove(spawn_coord)
         self._mark_dirty_cell(spawn_coord)
         self._mark_dirty_player(player_id)
-        direction = random.choice(constants.DIRECTIONS)
+        direction = self.random.choice(constants.DIRECTIONS)
 
         start_max_hp = 10
         start_ammo = 10
@@ -656,7 +661,7 @@ class Game(object):
         # And now, some mines
         for mine_size in (1,2):
             # symbols are ; and g
-            mine_coord = random.choice(list(suitable))
+            mine_coord = self.random.choice(list(suitable))
             suitable.remove(mine_coord)
 
             mine = (constants.OBJ_MINE, {'size': mine_size})
@@ -965,6 +970,8 @@ class Game(object):
                 self._mark_dirty_cell(cell)
             self._mark_dirty_player(player_id)
 
+            self._move_into(player, old_location, new_location)
+
     def _fire(self, player, location, arg):
         direction = player[1]['direction']
         player_id = player[1]['player_id']
@@ -995,6 +1002,54 @@ class Game(object):
 
         self._mark_dirty_cell(bullet_location)
 
+    def _move_into(self, player, old_location, new_location):
+        diff = (new_location[0] - old_location[0],
+                new_location[1] - old_location[1])
+
+        direction = None
+        if diff in constants.DIFFS.values():
+            for direction, other_diff in constants.DIFFS.items():
+                if other_diff == diff:
+                    break
+
+        for object in self.world[new_location]:
+            obj, attr = object
+
+            if object == player:
+                continue
+            elif obj == constants.OBJ_MINE:
+                # If the direction of the movement is the same as the
+                # look direction of the player, then the mine will most likely
+                # not explode.
+                player_diff = constants.DIFFS[player[1]['direction']]
+
+                if direction == player[1]['direction']:
+                    chance = constants.MINE_DIRECT_PROBABILITY
+
+                # Backwards is the biggest chance.
+                elif (diff[0] * -1, diff[1] * -1) == player_diff:
+                    chance = constants.MINE_BACKWARDS_PROBABILITY
+
+                # Side on is more chance of explosion.
+                else:
+                    chance = constants.MINE_SIDE_PROBABILITY
+
+                size = attr['size']
+                self.world[new_location].remove(object)
+
+                # The chance is chance of NO EXPLOSION
+                if chance > self.random.random():
+                    # Disarm, the mine.
+                    if size == 1:
+                        ammo_increase = 1
+                    elif size == 2:
+                        ammo_increase = 5
+                    else:
+                        ammo_increase = 0
+
+                    player[1]['ammo'] += ammo_increase
+                else:
+                    self._make_explosion(new_location, size)
 
     def _mark_dirty_cell(self, coord):
         self._dirty_coords.add(coord)
@@ -1120,16 +1175,8 @@ class Game(object):
                                 for o in self.world[new_coord])
 
                 if any_solid:
-                    for ex_coord in neighbourhood(new_coord,n=size-1):
-                        if ex_coord not in self.world:
-                            continue
-
-                        explosion = (constants.OBJ_EXPLOSION,
-                                     {'_damage':size**2})
-
-                        self.world[ex_coord].append(explosion)
-                        self._mark_dirty_cell(ex_coord)
-                        exploded = True
+                    self._make_explosion(new_coord, size)
+                    exploded = True
 
                 if exploded:
                     break
@@ -1139,6 +1186,18 @@ class Game(object):
                     self._mark_dirty_cell(new_coord)
                     coord = new_coord
                     # Then the while loop may continue
+
+    def _make_explosion(self, coord, size):
+        for ex_coord in neighbourhood(coord,n=size-1):
+            if ex_coord not in self.world:
+                continue
+
+            explosion = (constants.OBJ_EXPLOSION,
+                         {'_damage':size**2})
+
+            self.world[ex_coord].append(explosion)
+            self._mark_dirty_cell(ex_coord)
+
 
     def _tick_explosions(self, time_passed):
         explosions = self.find_objs(constants.OBJ_EXPLOSION)

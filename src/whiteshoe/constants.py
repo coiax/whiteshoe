@@ -115,6 +115,10 @@ class Constants(object):
     KEEPALIVE_TIME = 5
     STAB_DAMAGE = 2
 
+    MINE_DIRECT_PROBABILITY = 0.98
+    MINE_SIDE_PROBABILITY = 0.50
+    MINE_BACKWARDS_PROBABILITY = 0.02
+
     @classmethod
     def to_numerical_constant(cls,constant):
         return cls._constants_table.index(constant)
