@@ -486,7 +486,7 @@ class ClientNetwork(object):
 
 
     def _ticklet(self):
-        rlist, wlist, xlist = select.select([self.socket],[],[],0.1)
+        rlist, wlist, xlist = select.select((self.socket,),(),(),0.1)
         for rs in rlist:
             data, addr = rs.recvfrom(4096)
             self.lastheard_timer.restart()
