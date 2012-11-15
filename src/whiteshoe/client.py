@@ -77,6 +77,26 @@ def main2(stdscr, ns):
         except KeyboardInterrupt:
             break
 
+class SetupScene(object):
+    def __init__(self, data):
+        self.data = data
+        self.network = self.data['network']
+
+        self.had_initial = False
+
+    def initial_tick(self, stdscr):
+        self.had_initial = True
+
+    def tick(self, stdscr):
+        if not self.had_initial:
+            self.initial_tick(stdscr)
+
+        self.network.update()
+
+    def input(self, stdscr, c):
+        pass
+
+
 class ConsoleScene(object):
     def __init__(self, data):
         self.data = data
@@ -106,7 +126,6 @@ class ConsoleScene(object):
 
     def input(self, stdscr, c):
         pass
-
 
 class GameScene(object):
     def __init__(self, data):
@@ -323,9 +342,18 @@ class GameScene(object):
 
         if obj == constants.OBJ_PLAYER:
             direction = attr['direction']
+            # The colour of a player generally is either
+            # enemy, ally, or self
+            me = self.network.find_me()[1]
+
             if attr['player_id'] == self.network.player_id:
+                # Colour green for self
                 colour = curses.color_pair(1)# | curses.A_REVERSE
+            elif attr['team'] == me[1]['team']:
+                colour = curses.color_pair(4)
+                # Yellow for ally
             else:
+                # Red for neither ally nor self ie. enemy
                 colour = curses.color_pair(2)
 
             if direction == constants.RIGHT:
@@ -416,7 +444,11 @@ class GameScene(object):
             raise NewScene(ConsoleScene(self.data))
         elif c in cmds:
             cmd = cmds[c]
-            self.network.send_command(cmd[0], cmd[1])
+            try:
+                self.network.send_command(cmd[0], cmd[1])
+            except NotInGame:
+                # TODO Put notification on message buffer
+                pass
 
 class ClientNetwork(object):
     def __init__(self,autojoin=None,automake=False):
@@ -453,6 +485,8 @@ class ClientNetwork(object):
         if autojoin is not None:
             self.join((ip,port))
 
+        self._cached_player = None
+
     def join(self, addr, game_id=None):
         ip, port = addr
 
@@ -474,6 +508,7 @@ class ClientNetwork(object):
 
     def update(self):
         # Do network things
+        self._cached_player = None
         self._ticklet()
 
 
@@ -516,6 +551,8 @@ class ClientNetwork(object):
         self.keepalive_timer.restart()
 
     def send_command(self,cmd,arg):
+        if self.game_id is None:
+            raise NotInGame
         cmd_num = constants.to_numerical_constant(cmd)
         arg_num = constants.to_numerical_constant(arg)
 
@@ -531,12 +568,17 @@ class ClientNetwork(object):
 
     def find_me(self):
         if self.player_id is not None:
-            for coord, objects in self.known_world.items():
-                for object in objects:
-                    if (object[0] == constants.OBJ_PLAYER and
-                        object[1]['player_id'] == self.player_id):
+            if self._cached_player is not None:
+                return self._cached_player
+            else:
+                for coord, objects in self.known_world.items():
+                    for object in objects:
+                        if (object[0] == constants.OBJ_PLAYER and
+                            object[1]['player_id'] == self.player_id):
 
-                        return coord, object
+                            self._cached_player = (coord, object)
+
+                            return coord, object
 
         # If no player is found
         raise PlayerNotFound
@@ -675,6 +717,9 @@ class PlayerNotFound(ClientException):
     pass
 
 class ServerDisconnect(ClientException):
+    pass
+
+class NotInGame(ClientException):
     pass
 
 if __name__=='__main__':
