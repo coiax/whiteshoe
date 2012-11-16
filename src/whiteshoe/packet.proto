@@ -103,5 +103,7 @@ message Packet {
     // status gameresume
     // (The game has been resumed, inputs are now accepted.)
 
+    // 9 - disconnect
+    optional int32 disconnect_code = 900;
 
 }

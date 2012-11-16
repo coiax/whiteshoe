@@ -40,6 +40,7 @@ class Server(object):
             constants.JOIN_GAME: self._join_game,
             # vision update (s->c)
             constants.KEEP_ALIVE: self._keep_alive,
+            constants.DISCONNECT: self._disconnect_packet,
 
         }
         self.port = constants.DEFAULT_PORT
@@ -59,7 +60,7 @@ class Server(object):
 
         self.socket = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
 
-        self.timeout = 30
+        self.timeout = constants.TIMEOUT
 
         self.stats = {'packets_sent':0,
                       'packets_recieved':0,
@@ -82,12 +83,8 @@ class Server(object):
                     player_id = self.clients[addr]['player_id']
 
                     if last_heard.elapsed_seconds > self.timeout:
-                        for game in self.games:
-                            if game.is_player_in_game(player_id):
-                                packets = game.player_leave(player_id)
-                                self._send_packets(packets)
-
-                        del self.clients[addr]
+                        reason = constants.DISCONNECT_TIMEOUT
+                        self._disconnect_client(addr, reason)
 
                     elif last_sent.elapsed_seconds > constants.KEEPALIVE_TIME:
                         p = packet_pb2.Packet()
@@ -133,7 +130,9 @@ class Server(object):
                     for payload_type in packet.payload_types:
                         self.handlers[payload_type](packet, addr)
 
-                    self.clients[addr]['last_heard'].restart()
+                    # The handler could have "disconnected" them
+                    if addr in self.clients:
+                        self.clients[addr]['last_heard'].restart()
 
 
             except KeyboardInterrupt:
@@ -230,6 +229,22 @@ class Server(object):
 
     def _keep_alive(self, packet, addr):
         pass
+
+    def _disconnect_packet(self, packet, addr):
+        self._disconnect_client(addr, packet.disconnect_code or None)
+
+    def _disconnect_client(self, addr, reason=None):
+        last_heard = self.clients[addr]['last_heard']
+        last_sent = self.clients[addr]['last_sent']
+        player_id = self.clients[addr]['player_id']
+
+        for game in self.games:
+            if game.is_player_in_game(player_id):
+                packets = game.player_leave(player_id)
+                self._send_packets(packets)
+
+        del self.clients[addr]
+
 
 def display_stats(stats):
     fmt = "\rNumber Sent: {0}, Number Recieved: {1}, Sent: {2}, Recieved: {3}"

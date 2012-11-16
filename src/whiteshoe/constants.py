@@ -41,8 +41,12 @@ class Constants(object):
     del _constants
 
     # Non-network constants after this point
+
+    BANNER = """Whiteshoe {version}""".format(version='0.0.0')
+
     PACKET_SIZE_LIMIT = 600
     DEFAULT_PORT = 25008
+    TIMEOUT = 30
 
     GET_GAMES_LIST = 0
     GAMES_RUNNING = 1
@@ -53,6 +57,12 @@ class Constants(object):
     VISION_UPDATE = 6
     KEEP_ALIVE = 7
     GAME_STATUS = 8
+    DISCONNECT = 9
+    
+    DISCONNECT_SHUTDOWN = 1
+    DISCONNECT_KICKED = 2
+    DISCONNECT_ERROR = 3
+    DISCONNECT_TIMEOUT = 4
 
     ERROR_NOT_IN_GAME = 1
 

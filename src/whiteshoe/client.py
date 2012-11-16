@@ -10,6 +10,7 @@ import readline
 import code
 import random
 import logging
+import threading
 
 import constants
 import packet_pb2
@@ -19,15 +20,45 @@ import utility
 logger = logging.getLogger(__name__)
 
 def client_main(args=None):
-    p = argparse.ArgumentParser()
-    p.add_argument('-c','--connect',default="::1")
+    p = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
+
+    p.add_argument('-c','--connect',default="::1",dest='ipaddr')
+    p.add_argument('-n','--name')
+    p.add_argument('-t','--team',type=int)
+
     ns = p.parse_args(args)
 
     #logging.basicConfig(filename='client.log',level=logging.DEBUG)
+    network = ClientNetwork()
+    network.connect((ns.ipaddr, None))
 
-    curses.wrapper(main2, ns)
+    #network.join_game((ns.connect, None), autojoin=True)
+    #scene = GameScene(ns, network)
+    scene = SetupScene(ns, network)
 
-def main2(stdscr, ns):
+    while True:
+        try:
+            try:
+                # interact enters its own loop, and then raises NewScene
+                # or CloseProgram to change the program state
+                scene.interact()
+            except Exception:
+                # scene.cleanup() is called before the exception rises
+                scene.cleanup()
+                raise
+        except NewScene as s:
+            scene = s[0]
+        except (CloseProgram, KeyboardInterrupt):
+            scene.shutdown()
+            network.shutdown()
+            break
+        except Exception:
+            scene.shutdown()
+            # Be polite, if we're crashing, tell the server
+            network.shutdown(constants.DISCONNECT_ERROR)
+            raise
+
+def curses_setup(stdscr):
     curses.curs_set(2) # block cursor
     curses.use_default_colors()
     curses.init_pair(1, curses.COLOR_GREEN, -1)
@@ -40,25 +71,110 @@ def main2(stdscr, ns):
     curses.init_pair(8, curses.COLOR_BLUE, -1)
     stdscr.nodelay(1)
 
-    def print(x):
-        stdscr.addstr("{0}".format(x), curses.color_pair(0))
-        stdscr.refresh()
+class SetupScene(object):
+    def __init__(self, namespace, network):
+        self.namespace = namespace
+        self.network = network
 
-    autojoin_addr = (ns.connect,None)
+        self.network_lock = threading.RLock()
 
-    data = {}
-    data['network'] = ClientNetwork(autojoin=autojoin_addr,automake=True)
-    data['hallu'] = False
-    data['empty-?'] = False
+    def interact(self):
+        self._start_thread()
+        # This keeps calling network.update(), although it means
+        # we need to aquire the network_lock to do any network things
+        print(constants.BANNER)
 
-    scene = GameScene(data)
-    while True:
-        try:
+        if 'name' not in self.namespace:
+            self.namespace.name = raw_input('Codename> ')
+        if 'team' not in self.namespace:
+            self.namespace.team = int(raw_input('Team#> '))
+
+        scene = GameScene(self.namespace, self.network)
+        self.network.join_game(autojoin=True)
+        raise NewScene(scene)
+
+    def cleanup(self):
+        self._stop_thread()
+
+    def shutdown(self):
+        pass
+
+    def _start_thread(self):
+        self.thread_running = True
+
+        self.network_thread = threading.Thread(name='NetworkThread',
+                                               target=self._thread_run)
+        self.network_thread.daemon = True
+
+        self.network_thread.start()
+
+    def _stop_thread(self):
+        with self.network_lock:
+            self.thread_running = False
+
+        self.network_thread.join(timeout=0.4)
+
+        if self.network_thread.is_alive():
+            # Give up, the thread is marked daemon, and should die with
+            # the program
+            pass
+
+    def _thread_run(self):
+        # I am sorry for my use of threads in Python, I am a horrible person.
+        while True:
+            # Allows the main thread to obtain this lock
+            time.sleep(0.01)
+            with self.network_lock:
+                if not self.thread_running:
+                    break
+                self.network.update()
+
+class ConsoleScene(object):
+    def __init__(self, namespace, network):
+        self.network = network
+        self.namespace = namespace
+
+    def interact(self):
+        our_locals = {
+            'update': self.network.update,
+            'network': self.network,
+            'data': self.namespace.local_data,
+            'namespace': self.namespace,
+        }
+
+        code.interact("Whiteshoe Python Console",raw_input,our_locals)
+
+        gamescene = GameScene(self.network, self.namespace)
+
+        raise NewScene(gamescene)
+
+    def cleanup(self):
+        pass
+    def shutdown(self):
+        pass
+
+
+class GameScene(object):
+    def __init__(self, namespace, network):
+        self.namespace = namespace
+        self.network = network
+
+        self.data = self.namespace.local_data = {}
+
+    def interact(self):
+        curses.wrapper(self._real_interact)
+
+    def _real_interact(self, stdscr):
+        curses_setup(stdscr)
+
+        self.first_tick(stdscr)
+
+        while True:
             # Calling .tick will make the client network update,
             # which will use select to check the socket, meaning we sleep
             # for a small amount of time
             # So no 100% CPU usage
-            scene.tick(stdscr)
+            self.tick(stdscr)
 
             # non-blocking
             c = stdscr.getch()
@@ -67,72 +183,14 @@ def main2(stdscr, ns):
                 if c == 27:
                     raise CloseProgram
                 else:
-                    scene.input(stdscr, c)
+                    self.input(stdscr, c)
 
-        except NewScene as ns:
-            scene = ns[0]
 
-        except CloseProgram:
-            break
-        except KeyboardInterrupt:
-            break
-
-class SetupScene(object):
-    def __init__(self, data):
-        self.data = data
-        self.network = self.data['network']
-
-        self.had_initial = False
-
-    def initial_tick(self, stdscr):
-        self.had_initial = True
-
-    def tick(self, stdscr):
-        if not self.had_initial:
-            self.initial_tick(stdscr)
-
-        self.network.update()
-
-    def input(self, stdscr, c):
+    def cleanup(self):
+        pass
+    def shutdown(self):
         pass
 
-
-class ConsoleScene(object):
-    def __init__(self, data):
-        self.data = data
-        self.network = self.data['network']
-
-    def tick(self, stdscr):
-        # We're not actually going to use the main framework at all
-        curses.nocbreak()
-        stdscr.keypad(0)
-        curses.echo()
-        curses.endwin()
-
-        our_locals = {
-            'update': self.network.update,
-            'network': self.network,
-            'data': self.data
-        }
-
-        code.interact("Whiteshoe Python Console",raw_input,our_locals)
-
-        curses.initscr()
-        curses.noecho()
-        curses.cbreak()
-        stdscr.keypad(1)
-
-        raise NewScene(GameScene(self.data))
-
-    def input(self, stdscr, c):
-        pass
-
-class GameScene(object):
-    def __init__(self, data):
-        self.data = data
-        self.network = data['network']
-
-        self.had_first_tick = False
     def first_tick(self, stdscr):
         # This is where all the initialisation stuff that can only happen
         # with the curses screen can happen.
@@ -193,10 +251,6 @@ class GameScene(object):
         return viewport, infobar
 
     def tick(self, stdscr):
-        if not self.had_first_tick:
-            self.first_tick(stdscr)
-            self.had_first_tick = True
-
         self.network.update()
 
         for event in self.network.get_events():
@@ -204,9 +258,9 @@ class GameScene(object):
                 curses.flash()
 
 
-        # TODO currently window viewport is based on the 0,0 topleft
-        # corner, and we want to be able to move around
         self.viewport.clear()
+
+        self.draw_infobar()
 
         try:
             my_coord, player = self.network.find_me()
@@ -215,7 +269,6 @@ class GameScene(object):
             # Do not draw the viewport
             pass
         else:
-            self.draw_infobar()
             self.draw_viewport(self.data['topleft'])
             curses.doupdate()
 
@@ -300,9 +353,12 @@ class GameScene(object):
     def _draw_bottom_infobar(self):
         self.infobar.clear()
         visible = self.network.get_visible()
-        my_coord, player = self.network.find_me()
+        try:
+            my_coord, player = self.network.find_me()
 
-        attr = player[1]
+            attr = player[1]
+        except PlayerNotFound:
+            attr = {}
 
         fmta = {
             'name' : attr.get('name', 'Unnamed'),
@@ -441,7 +497,9 @@ class GameScene(object):
             ord('9'): (constants.CMD_FIRE, constants.N9),
         }
         if c == ord('c'):
-            raise NewScene(ConsoleScene(self.data))
+            consolescene = ConsoleScene(self.namespace, self.network)
+            raise NewScene(consolescene)
+
         elif c in cmds:
             cmd = cmds[c]
             try:
@@ -451,26 +509,21 @@ class GameScene(object):
                 pass
 
 class ClientNetwork(object):
-    def __init__(self,autojoin=None,automake=False):
+    def __init__(self):
         self.handlers = {
             # c->s get games list
             constants.GAMES_RUNNING: self._games_running,
+            # c->s make new game
             constants.ERROR: self._error,
+            # c->s action
             constants.VISION_UPDATE: self._vision_update,
             constants.KEEP_ALIVE: self._keep_alive,
             constants.GAME_STATUS: self._game_status,
+            constants.DISCONNECT: self._disconnect,
         }
 
-        address_type = socket.AF_INET6
+        self.socket = None
 
-        if autojoin is not None:
-            ip,port = autojoin
-            if '.' in ip:
-                address_type = socket.AF_INET
-            elif ':' in ip:
-                address_type = socket.AF_INET6
-
-        self.socket = socket.socket(address_type,socket.SOCK_DGRAM)
         self.known_world = {}
 
         self.game_id = None
@@ -482,23 +535,35 @@ class ClientNetwork(object):
         self.keepalive_timer = utility.Stopwatch()
         self.lastheard_timer = utility.Stopwatch()
 
-        if autojoin is not None:
-            self.join((ip,port))
-
         self._cached_player = None
 
-    def join(self, addr, game_id=None):
-        ip, port = addr
+    def connect(self, addr):
+        address_type = socket.AF_INET6
+
+        ip,port = addr
 
         if port is None:
             port = constants.DEFAULT_PORT
 
+        if '.' in ip:
+            address_type = socket.AF_INET
+        elif ':' in ip:
+            address_type = socket.AF_INET6
+
+        self.socket = socket.socket(address_type,socket.SOCK_DGRAM)
         self._server_addr = (ip, port)
+
+        self._send_keepalive()
+        self.lastheard_timer.start()
+
+    def join_game(self, autojoin=False, game_id=None):
+        assert self.socket is not None
+        assert autojoin or game_id is not None
 
         p = packet_pb2.Packet()
         p.packet_id = get_id('packet')
         p.payload_types.append(constants.JOIN_GAME)
-        if game_id is None:
+        if autojoin:
             p.autojoin = True
         else:
             p.autojoin = False
@@ -508,17 +573,27 @@ class ClientNetwork(object):
 
     def update(self):
         # Do network things
-        self._cached_player = None
-        self._ticklet()
+        if self.socket is not None:
+            self._cached_player = None
+            self._ticklet()
 
 
-        if self.keepalive_timer.elapsed_seconds > constants.KEEPALIVE_TIME:
-            self._send_keepalive()
+            if self.keepalive_timer.elapsed_seconds > constants.KEEPALIVE_TIME:
+                self._send_keepalive()
 
-        if self.lastheard_timer.elapsed_seconds > 30:
-            # Later, we'll flag the server as being disconnected, but for now
-            raise ServerDisconnect
+            if self.lastheard_timer.elapsed_seconds > 30:
+                # Later, we'll flag the server as being disconnected,
+                # but for now, raise the exception
+                raise ServerDisconnect
 
+    def shutdown(self, reason=constants.DISCONNECT_SHUTDOWN):
+        if self.socket is not None:
+            p = packet_pb2.Packet()
+            p.packet_id = get_id('packet')
+            p.payload_types.append(constants.DISCONNECT)
+            p.disconnect_code = reason
+
+            self._send_packets((p,), self._server_addr)
 
     def _ticklet(self):
         rlist, wlist, xlist = select.select((self.socket,),(),(),0.1)
@@ -545,12 +620,15 @@ class ClientNetwork(object):
         self._send_packets([p], self._server_addr)
 
     def _send_packets(self, packets, addr):
-        for packet in packets:
-            self.socket.sendto(packet.SerializeToString(), addr)
+        if self.socket is not None:
+            for packet in packets:
+                self.socket.sendto(packet.SerializeToString(), addr)
 
-        self.keepalive_timer.restart()
+            self.keepalive_timer.restart()
 
     def send_command(self,cmd,arg):
+        assert self.socket is not None
+
         if self.game_id is None:
             raise NotInGame
         cmd_num = constants.to_numerical_constant(cmd)
@@ -567,6 +645,8 @@ class ClientNetwork(object):
         self._send_packets([p],self._server_addr)
 
     def find_me(self):
+        assert self.socket is not None
+
         if self.player_id is not None:
             if self._cached_player is not None:
                 return self._cached_player
@@ -702,6 +782,18 @@ class ClientNetwork(object):
             event = (status,)
 
         self.events.append(event)
+
+    def _disconnect(self, packet, addr):
+        # Like STATUS_LEFT, but we remove all information about the server
+
+        self.known_world = {}
+
+        self.game_id = None
+        self.player_id = None
+        self.vision = None
+
+        # FIXME later we won't raise this, maybe possibly change scenes?
+        raise ServerDisconnect
 
 
 class ClientException(Exception):
