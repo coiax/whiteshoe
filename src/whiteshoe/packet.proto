@@ -40,6 +40,10 @@ message Packet {
     // if false, join this game_id
     optional int32 join_game_id = 501;
 
+    optional string player_name = 502;
+    // 0 is not a valid player_team number
+    optional sint32 player_team = 503;
+
     // 6 - vision update
     optional int32 vision_game_id = 600;
     repeated sint32 objects = 601 [packed=true];

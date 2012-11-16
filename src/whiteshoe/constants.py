@@ -1,5 +1,6 @@
 import operator
 import sys
+import os.path
 
 class Constants(object):
     UP = "up"
@@ -44,6 +45,10 @@ class Constants(object):
 
     BANNER = """Whiteshoe {version}""".format(version='0.0.0')
 
+    CONFIG_LOCATIONS = (os.path.join('~','.config','whiteshoe','config'),
+                        os.path.join('~','.whiteshoe','config'),
+                       )
+
     PACKET_SIZE_LIMIT = 600
     DEFAULT_PORT = 25008
     TIMEOUT = 30
@@ -58,7 +63,7 @@ class Constants(object):
     KEEP_ALIVE = 7
     GAME_STATUS = 8
     DISCONNECT = 9
-    
+
     DISCONNECT_SHUTDOWN = 1
     DISCONNECT_KICKED = 2
     DISCONNECT_ERROR = 3

@@ -201,7 +201,11 @@ class Server(object):
             game_id = packet.join_game_id
             game = [g for g in self.games if g.id == game_id][0]
 
-        packets = game.player_join(self.clients[addr]['player_id'])
+        name = packet.player_name or None
+        team = packet.player_team or None
+
+        packets = game.player_join(self.clients[addr]['player_id'],
+                                  name=name, team=team)
         self._send_packets(packets)
 
     def _error(self, packet, addr):
@@ -688,6 +692,9 @@ class Game(object):
         # including the new player
         for coord, player in self.find_objs(constants.OBJ_PLAYER):
             player[1]['ammo'] += 5
+            self._mark_dirty_cell(coord)
+
+        return spawn_coord, player
 
     def _remove_player(self, player_id):
         location, player = self._find_player(player_id)
@@ -711,13 +718,19 @@ class Game(object):
 
         self._spawn_player(player_id)
 
-    def player_join(self,player_id):
+    def player_join(self,player_id,name=None,team=None):
         assert player_id not in self.players
+
         self.players.append(player_id)
         self.known_worlds[player_id] = {}
 
-        self._spawn_player(player_id)
-        location, player = self._find_player(player_id)
+        location, player = self._spawn_player(player_id)
+
+        attr = player[1]
+        if name is not None:
+            attr['name'] = name
+        if team is not None:
+            attr['team'] = team
 
 
         join_packet = packet_pb2.Packet()

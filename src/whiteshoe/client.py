@@ -87,10 +87,22 @@ class SetupScene(object):
         if 'name' not in self.namespace:
             self.namespace.name = raw_input('Codename> ')
         if 'team' not in self.namespace:
-            self.namespace.team = int(raw_input('Team#> '))
+            team_str = raw_input('Team (0 for no team)> ')
+            team = 0
+
+            if team_str and team_str != '0':
+                try:
+                    team = int(team_str)
+                except ValueError:
+                    print("Invalid team, assuming no team.")
+
+            self.namespace.team = team
+
+        name = self.namespace.name
+        team = self.namespace.team
 
         scene = GameScene(self.namespace, self.network)
-        self.network.join_game(autojoin=True)
+        self.network.join_game(autojoin=True,player_name=name,player_team=team)
         raise NewScene(scene)
 
     def cleanup(self):
@@ -144,7 +156,7 @@ class ConsoleScene(object):
 
         code.interact("Whiteshoe Python Console",raw_input,our_locals)
 
-        gamescene = GameScene(self.network, self.namespace)
+        gamescene = GameScene(self.namespace, self.network)
 
         raise NewScene(gamescene)
 
@@ -556,7 +568,9 @@ class ClientNetwork(object):
         self._send_keepalive()
         self.lastheard_timer.start()
 
-    def join_game(self, autojoin=False, game_id=None):
+    def join_game(self, autojoin=False, game_id=None,
+                  player_name=None, player_team=None):
+
         assert self.socket is not None
         assert autojoin or game_id is not None
 
@@ -568,6 +582,10 @@ class ClientNetwork(object):
         else:
             p.autojoin = False
             p.join_game_id = game_id
+        if player_name is not None:
+            p.player_name = player_name
+        if player_team is not None:
+            p.player_team = player_team
 
         self._send_packets([p], self._server_addr)
 
@@ -583,7 +601,7 @@ class ClientNetwork(object):
 
             if self.lastheard_timer.elapsed_seconds > 30:
                 # Later, we'll flag the server as being disconnected,
-                # but for now, raise the exception
+                # but for now, raise the exception FIXME
                 raise ServerDisconnect
 
     def shutdown(self, reason=constants.DISCONNECT_SHUTDOWN):
