@@ -31,7 +31,8 @@ class Bot(object):
     def go(self):
         try:
             self.network = client.ClientNetwork()
-            self.network.join(self.addr, self.game_id)
+            self.network.connect(self.addr)
+            self.network.join_game(autojoin=True,player_name='Bot')
 
             while True:
                     self.network.update()
@@ -40,7 +41,11 @@ class Bot(object):
                         self.think()
         except KeyboardInterrupt:
             # TODO send server disconnection packet
+            self.network.shutdown()
             return
+        except Exception:
+            self.network.shutdown(constants.DISCONNECT_ERROR)
+            raise
 
     def think(self):
         try:
