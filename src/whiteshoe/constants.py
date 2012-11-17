@@ -129,7 +129,7 @@ class Constants(object):
 
     VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET,
                               OBJ_MINE)
-    BLOWABLE_UP = WALLS + (OBJ_PLAYER,OBJ_MINE)
+    BLOWABLE_UP = WALLS + (OBJ_PLAYER,OBJ_MINE,OBJ_SLIME)
     CAN_STAB = (OBJ_PLAYER,)
 
     ATTRIBUTE_KEYS = ("player_id", "direction", "team", "hp_max", "hp",
