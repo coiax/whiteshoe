@@ -24,6 +24,7 @@ def server_main(args=None):
     p.add_argument('-v','--vision',default='cone')
     p.add_argument('-m','--map',default='depth_first')
     p.add_argument('-q','--quiet',action='store_true',default=False)
+    p.add_argument('-d','--debug',action='store_true')
     ns = p.parse_args(args)
     s = Server(vars(ns))
     s.serve()
@@ -53,6 +54,7 @@ class Server(object):
         self.games.append(g)
 
         self.display_stats = not options['quiet']
+        self.debug = options['debug']
 
         self.seen_ids = []
 
@@ -143,7 +145,11 @@ class Server(object):
                 break
 
             except Exception as e:
-                traceback.print_exc()
+                if self.debug:
+                    # If we're debugging, then the server can crash
+                    raise
+                else:
+                    traceback.print_exc()
 
     def _send_packets(self, packets):
         for packet_player_id, packet in packets:
@@ -703,9 +709,11 @@ class Game(object):
 
         self._mark_dirty_cell(location)
 
+        return location, player
 
     def _kill_player(self, player_id):
-        self._remove_player(player_id)
+        old_location, old_player = self._remove_player(player_id)
+
         self.known_worlds[player_id] = {}
 
         event_type = constants.STATUS_DEATH
@@ -716,7 +724,14 @@ class Game(object):
         event = (player_id, event_type, responsible_id, damage_type)
         self.events.append(event)
 
-        self._spawn_player(player_id)
+        new_location, player = self._spawn_player(player_id)
+
+        old_attr = old_player[1]
+        new_attr = player[1]
+
+        for attribute in ('name','team'):
+            if attribute in old_attr:
+                new_attr[attribute] = old_attr[attribute]
 
     def player_join(self,player_id,name=None,team=None):
         assert player_id not in self.players
@@ -1003,28 +1018,42 @@ class Game(object):
     def _fire(self, player, location, arg):
         direction = player[1]['direction']
         player_id = player[1]['player_id']
-        power = arg
 
-        attr = player[1]
+        if arg in (constants.SMALL_SLIME, constants.BIG_SLIME):
+            ammo_cost = constants.SLIME_COSTS[arg]
 
-        ammo = attr['ammo']
-        ammo_cost = power**2
-        # Find how much ammo the player can spend
-        while ammo_cost > ammo:
-            power -= 1
-
-            if power == 0:
-                # Nothing happens, not enough ammo
+            if player[1]['ammo'] >= ammo_cost:
+                player[1]['ammo'] -= ammo_cost
+            else:
+                # Nothing fires
                 return []
-            ammo_cost = power**2
 
-        attr['ammo'] -= ammo_cost
+            attr = {'owner': player_id, 'direction': direction, 'size': arg}
+            bullet = (constants.OBJ_SLIME_BULLET, attr)
+
+        else:
+            power = arg
+
+            attr = player[1]
+
+            ammo = attr['ammo']
+            ammo_cost = power**2
+            # Find how much ammo the player can spend
+            while ammo_cost > ammo:
+                power -= 1
+
+                if power == 0:
+                    # Nothing happens, not enough ammo
+                    return []
+                ammo_cost = power**2
+
+            attr['ammo'] -= ammo_cost
+
+            attr = {'owner': player_id, 'direction':direction, 'size':power}
+            bullet = (constants.OBJ_BULLET, attr)
 
         diff = constants.DIFFS[direction]
         bullet_location = location
-
-        attr = {'owner': player_id, 'direction':direction, 'size':power}
-        bullet = (constants.OBJ_BULLET, attr)
 
         self.world[bullet_location].append(bullet)
 
@@ -1164,6 +1193,7 @@ class Game(object):
 
         self._tick_bullets(time_diff_s)
         self._tick_explosions(time_diff_s)
+        self._tick_slimes(time_diff_s)
 
         packets = []
         packets.extend(self._event_check())
@@ -1259,6 +1289,107 @@ class Game(object):
             if attr['_time_left'] < 0:
                 self.world[coord].remove(explosion)
                 self._mark_dirty_cell(coord)
+
+    def _tick_slimes(self, time_passed):
+        slime_bullets = self.find_objs(constants.OBJ_SLIME_BULLET)
+
+        for coord, bullet in slime_bullets:
+            # Horrible reuse of explosion bullet code here,
+            # TODO will need to see if we can combine it into some sort
+            # of function
+            attr = bullet[1]
+            size = attr['size']
+            speed = constants.SLIME_BULLET_SPEED[size]
+
+            if '_time_remaining' not in attr:
+                attr['_time_remaining'] = speed
+
+            attr['_time_remaining'] -= time_passed
+
+            explode = False
+            while attr['_time_remaining'] < 0 and not explode:
+                attr['_time_remaining'] += speed
+
+
+                self.world[coord].remove(bullet)
+                old_coord = coord
+                self._mark_dirty_cell(coord)
+
+                loc_diff = constants.DIFFS[bullet[1]['direction']]
+
+                new_coord = (coord[0] + loc_diff[0], coord[1] + loc_diff[1])
+
+                if new_coord not in self.world:
+                    # Bullet just disappears.
+                    break
+
+                any_solid = any(o[0] in constants.SOLID_OBJECTS
+                                for o in self.world[new_coord])
+
+                if any_solid:
+                    explode = True
+
+                if explode:
+                    # The bullet has been removed by this point
+                    break
+                else:
+                    # Bullet keeps moving
+                    self.world[new_coord].append(bullet)
+                    self._mark_dirty_cell(new_coord)
+                    old_coord = coord
+                    coord = new_coord
+                    assert old_coord != new_coord
+                    # Then the while loop may continue
+            if explode:
+                slime_coord = old_coord
+                # A new slime is born
+                attr = {}
+                attr['owner'] = bullet[1]['owner']
+                attr['size'] = bullet[1]['size']
+                attr['_spread_to'] = set([slime_coord])
+
+                slime = (constants.OBJ_SLIME, attr)
+                self.world[slime_coord].append(slime)
+                self._mark_dirty_cell(slime_coord)
+        # end for
+
+        for coord, slime in self.find_objs(constants.OBJ_SLIME):
+            attr = slime[1]
+            #TODO kill slime after a bit
+            if '_spread_time' not in attr:
+                attr['_spread_time'] = constants.SLIME_SPREAD_TIME
+
+            attr['_spread_time'] -= time_passed
+            while attr['_spread_time'] < 0:
+                attr['_spread_time'] += constants.SLIME_SPREAD_TIME
+                neighbourhood = utility.cardinal_neighbourhood(coord)
+                possible_locations = set(neighbourhood) - attr['_spread_to']
+                possible_locations &= set(self.world)
+
+                slime_spread = constants.SLIME_SPREAD[attr['size']]
+                spreads_remaining = slime_spread - len(attr['_spread_to'])
+
+                assert spreads_remaining >= 0
+
+                # Slime can only spread to non-solid locations
+                for location in list(possible_locations):
+                    if any(obj[0] in constants.AIRTIGHT_OBJECTS
+                           for obj in self.world[location]):
+                        possible_locations.remove(location)
+
+                if possible_locations and spreads_remaining:
+                    spread_coord = self.random.choice(list(possible_locations))
+                    attr['_spread_to'].add(spread_coord)
+                    self._mark_dirty_cell(spread_coord)
+
+                    new_attr = {}
+                    new_attr['owner'] = slime[1]['owner']
+                    new_attr['size'] = slime[1]['size']
+                    new_attr['_spread_to'] = slime[1]['_spread_to']
+
+                    slime = (constants.OBJ_SLIME, new_attr)
+                    self.world[spread_coord].append(slime)
+
 
     def _damage_object(self, coord, object, amount):
         is_player = object[0] == constants.OBJ_PLAYER

@@ -25,6 +25,8 @@ class Constants(object):
     OBJ_BULLET = "bullet"
     OBJ_EXPLOSION = "boom"
     OBJ_MINE = "mine"
+    OBJ_SLIME = "slime"
+    OBJ_SLIME_BULLET = "slime-bullet"
 
     N1 = 1
     N2 = 2
@@ -35,6 +37,11 @@ class Constants(object):
     N7 = 7
     N8 = 8
     N9 = 9
+    SMALL_SLIME = "small-slime"
+    BIG_SLIME = "big-slime"
+
+    # Check for duplicate values
+    assert sorted(vars().values()) == sorted(set(vars().values())) # duplicates
 
     _constants = list(vars().items())
     _constants.sort(key=operator.itemgetter(0))
@@ -48,6 +55,20 @@ class Constants(object):
     CONFIG_LOCATIONS = (os.path.join('~','.config','whiteshoe','config'),
                         os.path.join('~','.whiteshoe','config'),
                        )
+    SLIME_COSTS = {
+        SMALL_SLIME: 5,
+        BIG_SLIME: 10,
+    }
+    SLIME_SPREAD = {
+        SMALL_SLIME: 10,
+        BIG_SLIME: 20,
+    }
+    SLIME_BULLET_SPEED = {
+        SMALL_SLIME: 0.10,
+        BIG_SLIME: 0.20,
+    }
+
+    SLIME_SPREAD_TIME = 0.3
 
     PACKET_SIZE_LIMIT = 600
     DEFAULT_PORT = 25008
@@ -102,8 +123,9 @@ class Constants(object):
     WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)
     HISTORICAL_OBJECTS = WALLS + (OBJ_EMPTY,)
     SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
+    AIRTIGHT_OBJECTS = WALLS
     OPAQUE_OBJECTS = WALLS
-    ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,)
+    ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,OBJ_SLIME)
 
     VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET,
                               OBJ_MINE)
@@ -113,7 +135,7 @@ class Constants(object):
     ATTRIBUTE_KEYS = ("player_id", "direction", "team", "hp_max", "hp",
                       "max_ammo", "ammo", "owner","size","historical",
                       "name")
-    ATTRIBUTE_CONSTANT_KEYS = ("direction",)
+    ATTRIBUTE_CONSTANT_KEYS = ("direction","size")
 
     BULLET_SPEEDS = {
         1: 0.05,

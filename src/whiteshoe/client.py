@@ -406,7 +406,9 @@ class GameScene(object):
             constants.OBJ_CORNER_WALL: '+',
             constants.OBJ_BULLET: ':',
             constants.OBJ_EXPLOSION: '*',
-            constants.OBJ_MINE: ';'}.get(obj,'?')
+            constants.OBJ_MINE: ';',
+            constants.OBJ_SLIME_BULLET: '$',
+            constants.OBJ_SLIME: '$'}.get(obj,'?')
 
         if obj == constants.OBJ_PLAYER:
             direction = attr['direction']
@@ -432,7 +434,7 @@ class GameScene(object):
                 display_chr = '^'
             elif direction == constants.DOWN:
                 display_chr = 'v'
-        elif obj == constants.OBJ_BULLET:
+        elif obj == constants.OBJ_BULLET or obj == constants.OBJ_SLIME_BULLET:
             owner = attr['owner']
             if owner == self.network.player_id:
                 colour = curses.color_pair(1)
@@ -446,6 +448,8 @@ class GameScene(object):
                 display_chr = ';'
             elif attr['size'] == 2:
                 display_chr = 'g'
+        elif obj == constants.OBJ_SLIME:
+            colour = curses.color_pair(1) | curses.A_BOLD
 
         assert display_chr is not None
 
@@ -507,6 +511,9 @@ class GameScene(object):
             ord('7'): (constants.CMD_FIRE, constants.N7),
             ord('8'): (constants.CMD_FIRE, constants.N8),
             ord('9'): (constants.CMD_FIRE, constants.N9),
+
+            ord('o'): (constants.CMD_FIRE, constants.SMALL_SLIME),
+            ord('O'): (constants.CMD_FIRE, constants.BIG_SLIME),
         }
         if c == ord('c'):
             consolescene = ConsoleScene(self.namespace, self.network)
