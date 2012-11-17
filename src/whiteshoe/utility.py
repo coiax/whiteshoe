@@ -371,3 +371,23 @@ def bresenhams_line(x_y,x2_y2):
     assert points[-1] == p2
 
     return coords
+
+def bresenham_line(a, b):
+    yield a
+    x0, y0 = a
+    x1, y1 = b
+    dx = abs(x1 - x0)
+    dy = abs(y1 - y0)
+    sx = 1 if x0 < x1 else -1
+    sy = 1 if y0 < y1 else -1
+    error = dx - dy
+
+    while (x0, y0) != (x1, y1):
+        e2 = 2*error
+        if e2 > -dy:
+            error -= dy
+            x0 += sx
+        if e2 < dx:
+            error += dx
+            y0 += sy
+        yield x0, y0
