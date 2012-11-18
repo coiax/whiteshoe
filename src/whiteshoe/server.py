@@ -1444,7 +1444,13 @@ class Game(object):
 
         for coord, slime in self.find_objs(constants.OBJ_SLIME):
             attr = slime[1]
-            #TODO kill slime after a bit
+            if '_death_time' in attr:
+                attr['_death_time'] -= time_passed
+                if attr['_death_time'] < 0:
+                    self.world[coord].remove(slime)
+                    self._mark_dirty_cell(coord)
+                    continue
+
             if '_spread_time' not in attr:
                 attr['_spread_time'] = constants.SLIME_SPREAD_TIME
 
@@ -1457,6 +1463,11 @@ class Game(object):
 
                 slime_spread = constants.SLIME_SPREAD[attr['size']]
                 spreads_remaining = slime_spread - len(attr['_spread_to'])
+
+                if spreads_remaining == 0:
+                    attr['_death_time'] = constants.SLIME_SPREAD_TIME
+                    break
+
 
                 assert spreads_remaining >= 0
 
