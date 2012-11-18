@@ -3,6 +3,9 @@ import math
 import collections
 import datetime
 import logging
+import random
+
+import constants
 
 logger = logging.getLogger(__name__)
 
@@ -202,3 +205,97 @@ def dict_difference(old, new):
             changed.add(key)
 
     return changed
+
+class CellularAutomaton(collections.MutableMapping):
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self._grid = [False] * self.width * self.height
+
+    def _cell_ref(self, x, y):
+        return self.width*y + x
+
+    def cells(self):
+        for y in xrange(self.height):
+            for x in xrange(self.width):
+                yield x, y
+
+    def __getitem__(self, x_y):
+        x, y = x_y
+        return self._grid[self._cell_ref(x, y)]
+
+    def __setitem__(self, x_y, value):
+        x, y = x_y
+        self._grid[self._cell_ref(x, y)] = value
+
+    def __delitem__(self, x_y):
+        self[x_y] = False
+
+    def __len__(self):
+        return len(self._grid)
+
+    def __contains__(self, x_y):
+        return x_y in self.cells()
+
+    def __iter__(self):
+        return iter(self.cells())
+
+    def seed(self, density = 0.5, rng = random):
+        for coord in self.cells():
+            self[coord] = rng.random() < density
+
+    def in_bounds(self, coord):
+        x, y = coord
+        return 0 <= x < self.width and 0 <= y < self.height
+
+    def apply(self, rules, boundary = False):
+        live = False
+
+        birth_rule, survive_rule = [[int(n) for n in x] for x in rules.split('/')]
+
+        will_birth = set()
+        will_die = set()
+
+        for coord in self.cells():
+            alive = self[coord]
+
+            neighbours = neighbourhood(coord, n=1)
+            neighbours.remove(coord)
+            # Remember that True has a numeric value of 1
+            number = sum(self[n] if self.in_bounds(n) else boundary for n in neighbours)
+            if not alive and number in birth_rule:
+                will_birth.add(coord)
+                live = True
+
+            elif alive and number not in survive_rule:
+                will_die.add(coord)
+                live = True
+
+        for coord in will_birth:
+            self[coord] = True
+
+        for coord in will_die:
+            self[coord] = False
+
+        return live
+
+    def converge(self, rules, max_ticks = 300, boundary = False):
+        live = True
+        ticks = 0
+        while live and ticks < max_ticks:
+            ticks += 1
+            live = self.apply(rules, boundary)
+
+def ca_world_to_world(ca_world,inverse=False):
+    world = {}
+    for coord in ca_world:
+        is_wall = bool(ca_world[coord])
+        if inverse:
+            is_wall = not is_wall
+
+        if is_wall:
+            world[coord] = [(constants.OBJ_WALL, {})]
+        else:
+            world[coord] = [(constants.OBJ_EMPTY, {})]
+
+    return world

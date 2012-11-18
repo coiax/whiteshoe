@@ -267,7 +267,6 @@ def display_stats(stats):
     sys.stderr.write(s)
     sys.stderr.flush()
 
-
 def map_purerandom(X=80,Y=24,seed=0):
     world = {}
     r = random.Random(seed)
@@ -287,107 +286,22 @@ def map_empty(X=80,Y=24,seed=None):
         world[i,j] = [(constants.OBJ_EMPTY, {})]
     return world
 
-class CellularAutomaton(object):
-    def __init__(self, width, height):
-        self.width = width
-        self.height = height
-        self._grid = [False] * self.width * self.height
-
-    def _cell_ref(self, x, y):
-        return self.width*y + x
-
-    def cells(self):
-        for y in xrange(self.height):
-            for x in xrange(self.width):
-                yield x, y
-
-    def __getitem__(self, (x, y)):
-        return self._grid[self._cell_ref(x, y)]
-
-    def __setitem__(self, (x, y), value):
-        self._grid[self._cell_ref(x, y)] = value
-
-    def seed(self, density = 0.5, rng = random):
-        for coord in self.cells():
-            self[coord] = rng.random() < density
-
-    def in_bounds(self, coord):
-        x, y = coord
-        return 0 <= x < self.width and 0 <= y < self.height
-
-    def apply(self, rules, boundary = False):
-        live = False
-
-        birth_rule, survive_rule = [[int(n) for n in x] for x in rules.split('/')]
-
-        will_birth = set()
-        will_die = set()
-
-        for coord in self.cells():
-            alive = self[coord]
-
-            neighbours = neighbourhood(coord, n=1)
-            neighbours.remove(coord)
-            # Remember that True has a numeric value of 1
-            number = sum(self[n] if self.in_bounds(n) else boundary for n in neighbours)
-            if not alive and number in birth_rule:
-                will_birth.add(coord)
-                live = True
-
-            elif alive and number not in survive_rule:
-                will_die.add(coord)
-                live = True
-
-        for coord in will_birth:
-            self[coord] = True
-
-        for coord in will_die:
-            self[coord] = False
-
-        return live
-
-    def converge(self, rules, max_ticks = 300, boundary = False):
-        live = True
-        ticks = 0
-        while live and ticks < max_ticks:
-            ticks += 1
-            live = self.apply(rules, boundary)
-
 def map_ca_maze(X=80,Y=24,seed=1):
-    ca_world = CellularAutomaton(X, Y)
+    ca_world = utility.CellularAutomaton(X, Y)
     r = random.Random(seed)
-    ca_world.seed(0.35)
+    ca_world.seed(0.35,rng=r)
     ca_world.converge('3/12345')
 
-    # Now the maze CA tends to generate isolated islands
-    world = {}
-    for coord in ca_world.cells():
-        if ca_world[coord]:
-            obj = [(constants.OBJ_WALL, {})]
-        else:
-            obj = [(constants.OBJ_EMPTY, {})]
-
-        world[coord] = obj
-
-    return world
+    return utility.ca_world_to_world(ca_world)
 
 def map_ca_caves(X=80,Y=24,seed=1):
-    ca_world = CellularAutomaton(X, Y)
+    ca_world = utility.CellularAutomaton(X, Y)
     r = random.Random(seed)
-    ca_world.seed(0.5)
+    ca_world.seed(0.5, rng=r)
     ca_world.converge('678/345678', boundary = True)
 
     # Now the maze CA tends to generate isolated islands
-    world = {}
-    for coord in ca_world.cells():
-        if ca_world[coord]:
-            obj = [(constants.OBJ_WALL, {})]
-        else:
-            obj = [(constants.OBJ_EMPTY, {})]
-
-        world[coord] = obj
-
-    return world
+    return utility.ca_world_to_world(ca_world)
 
 def map_depth_first(X=80, Y=24, seed=0):
     r = random.Random(seed)
