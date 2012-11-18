@@ -3,9 +3,9 @@ import sys
 import os.path
 
 try:
-    import whiteshoe
+    import whiteshoe.server
 except ImportError:
     sys.path.insert(0, os.path.join('.','src'))
-    import whiteshoe
+    import whiteshoe.server
 
-whiteshoe.server_main()
+whiteshoe.server.server_main()

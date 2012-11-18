@@ -3,9 +3,9 @@ import sys
 import os.path
 
 try:
-    import whiteshoe
+    import whiteshoe.client
 except ImportError:
     sys.path.insert(0, os.path.join('.','src'))
-    import whiteshoe
+    import whiteshoe.client
 
-whiteshoe.client_main()
+whiteshoe.client.client_main()
