@@ -287,54 +287,99 @@ def map_empty(X=80,Y=24,seed=None):
         world[i,j] = [(constants.OBJ_EMPTY, {})]
     return world
 
-def map_ca_maze(X=80,Y=24,seed=1):
-    r = random.Random(seed)
-    ca_world = {}
+class CellularAutomaton(object):
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self._grid = [False] * self.width * self.height
 
-    starting_density = 0.35
-    max_ticks = 300
-    B = [3]
-    S = [1,2,3,4,5]
+    def _cell_ref(self, x, y):
+        return self.width*y + x
 
-    # A cellular automata with rules B3/S12345 generates a maze based on
-    # starting conditions
-    for i,j in itertools.product(range(X),range(Y)):
-        ca_world[i,j] = r.random() < starting_density
+    def cells(self):
+        for y in xrange(self.height):
+            for x in xrange(self.width):
+                yield x, y
 
-    ticks = 0
-    live = True
-    while live and ticks < max_ticks:
+    def __getitem__(self, (x, y)):
+        return self._grid[self._cell_ref(x, y)]
+
+    def __setitem__(self, (x, y), value):
+        self._grid[self._cell_ref(x, y)] = value
+
+    def seed(self, density = 0.5, rng = random):
+        for coord in self.cells():
+            self[coord] = rng.random() < density
+
+    def in_bounds(self, coord):
+        x, y = coord
+        return 0 <= x < self.width and 0 <= y < self.height
+
+    def apply(self, rules, boundary = False):
         live = False
-        ticks += 1
+
+        birth_rule, survive_rule = [[int(n) for n in x] for x in rules.split('/')]
 
         will_birth = set()
         will_die = set()
 
-        for coord in ca_world:
-            alive = ca_world[coord]
+        for coord in self.cells():
+            alive = self[coord]
 
-            neighbours = neighbourhood(coord,n=1)
+            neighbours = neighbourhood(coord, n=1)
             neighbours.remove(coord)
             # Remember that True has a numeric value of 1
-            number = sum(ca_world[n] for n in neighbours if n in ca_world)
-            if not alive and number in B:
+            number = sum(self[n] if self.in_bounds(n) else boundary for n in neighbours)
+            if not alive and number in birth_rule:
                 will_birth.add(coord)
                 live = True
 
-            elif alive and number not in S:
+            elif alive and number not in survive_rule:
                 will_die.add(coord)
                 live = True
 
         for coord in will_birth:
-            ca_world[coord] = True
+            self[coord] = True
 
         for coord in will_die:
-            ca_world[coord] = False
+            self[coord] = False
+
+        return live
+
+    def converge(self, rules, max_ticks = 300, boundary = False):
+        live = True
+        ticks = 0
+        while live and ticks < max_ticks:
+            ticks += 1
+            live = self.apply(rules, boundary)
+
+def map_ca_maze(X=80,Y=24,seed=1):
+    ca_world = CellularAutomaton(X, Y)
+    r = random.Random(seed)
+    ca_world.seed(0.35)
+    ca_world.converge('3/12345')
 
     # Now the maze CA tends to generate isolated islands
-
     world = {}
-    for coord in ca_world:
+    for coord in ca_world.cells():
+        if ca_world[coord]:
+            obj = [(constants.OBJ_WALL, {})]
+        else:
+            obj = [(constants.OBJ_EMPTY, {})]
+
+        world[coord] = obj
+
+    return world
+
+def map_ca_caves(X=80,Y=24,seed=1):
+    ca_world = CellularAutomaton(X, Y)
+    r = random.Random(seed)
+    ca_world.seed(0.5)
+    ca_world.converge('678/345678', boundary = True)
+
+    # Now the maze CA tends to generate isolated islands
+    world = {}
+    for coord in ca_world.cells():
         if ca_world[coord]:
             obj = [(constants.OBJ_WALL, {})]
         else:
@@ -718,6 +763,7 @@ class Game(object):
         'purerandom': map_purerandom,
         'empty': map_empty,
         'ca_maze': map_ca_maze,
+        'ca_caves': map_ca_caves,
         'depth_first': map_depth_first,
     }
     VISION_FUNCTIONS = {
