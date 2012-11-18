@@ -1436,6 +1436,8 @@ class Game(object):
                 attr['owner'] = bullet[1]['owner']
                 attr['size'] = bullet[1]['size']
                 attr['_spread_to'] = set([slime_coord])
+                attr['_damaged'] = []
+
 
                 slime = (constants.OBJ_SLIME, attr)
                 self.world[slime_coord].append(slime)
@@ -1443,6 +1445,18 @@ class Game(object):
         # end for
 
         for coord, slime in self.find_objs(constants.OBJ_SLIME):
+            for obj in self.world[coord]:
+                if obj == slime:
+                    continue
+                elif obj[0] in constants.SLIMEABLE:
+                    if obj in slime[1]['_damaged']:
+                        continue
+                    else:
+                        slime[1]['_damaged'].append(obj)
+
+                    self._damage_object(coord, obj, constants.SLIME_DAMAGE)
+                    self._mark_dirty_cell(coord)
+
             attr = slime[1]
             if '_death_time' in attr:
                 attr['_death_time'] -= time_passed
@@ -1486,6 +1500,7 @@ class Game(object):
                     new_attr['owner'] = slime[1]['owner']
                     new_attr['size'] = slime[1]['size']
                     new_attr['_spread_to'] = slime[1]['_spread_to']
+                    new_attr['_damaged'] = slime[1]['_damaged']
 
                     slime = (constants.OBJ_SLIME, new_attr)
                     self.world[spread_coord].append(slime)

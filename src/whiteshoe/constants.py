@@ -69,6 +69,7 @@ class Constants(object):
     }
 
     SLIME_SPREAD_TIME = 0.3
+    SLIME_DAMAGE = 5
 
     PACKET_SIZE_LIMIT = 600
     DEFAULT_PORT = 25008
@@ -131,6 +132,7 @@ class Constants(object):
                               OBJ_MINE)
     BLOWABLE_UP = WALLS + (OBJ_PLAYER,OBJ_MINE,OBJ_SLIME)
     CAN_STAB = (OBJ_PLAYER,)
+    SLIMEABLE = (OBJ_PLAYER, OBJ_MINE)
 
     ATTRIBUTE_KEYS = ("player_id", "direction", "team", "hp_max", "hp",
                       "max_ammo", "ammo", "owner","size","historical",
