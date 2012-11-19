@@ -82,7 +82,7 @@ class SetupScene(object):
         self._start_thread()
         # This keeps calling network.update(), although it means
         # we need to aquire the network_lock to do any network things
-        print(constants.BANNER)
+        # print(constants.BANNER)
 
         if 'name' not in self.namespace:
             self.namespace.name = raw_input('Codename> ')
