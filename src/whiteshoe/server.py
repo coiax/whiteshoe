@@ -18,6 +18,7 @@ import packet_pb2
 from utility import (neighbourhood, get_id, bytes_to_human, dict_difference,
                      cardinal_neighbourhood)
 import utility
+import maps
 
 def server_main(args=None):
     # Ignore arguments for now
@@ -266,138 +267,6 @@ def display_stats(stats):
 
     sys.stderr.write(s)
     sys.stderr.flush()
-
-def map_purerandom(X=80,Y=24,seed=0):
-    world = {}
-    r = random.Random(seed)
-
-    for i,j in itertools.product(range(X), range(Y)):
-        if r.random() < 0.35:
-            world[i,j] = [(constants.OBJ_WALL, {})]
-        else:
-            world[i,j] = [(constants.OBJ_EMPTY, {})]
-
-    return world
-
-def map_empty(X=80,Y=24,seed=None):
-    world = {}
-
-    for i,j in itertools.product(range(X), range(Y)):
-        world[i,j] = [(constants.OBJ_EMPTY, {})]
-    return world
-
-def map_ca_maze(X=80,Y=24,seed=1):
-    ca_world = utility.CellularAutomaton(X, Y)
-    r = random.Random(seed)
-    ca_world.seed(0.35,rng=r)
-    ca_world.converge('3/12345')
-
-    return utility.ca_world_to_world(ca_world)
-
-def map_ca_caves(X=80,Y=24,seed=1):
-    ca_world = utility.CellularAutomaton(X, Y)
-    r = random.Random(seed)
-    ca_world.seed(0.5, rng=r)
-    ca_world.converge('678/345678', boundary = True)
-
-    # Now the maze CA tends to generate isolated islands
-    return utility.ca_world_to_world(ca_world)
-
-def map_depth_first(X=80, Y=24, seed=0):
-    r = random.Random(seed)
-
-    # The division by 2 will be important later
-    cells = list(itertools.product(range(X//2), range(Y//2)))
-
-    initial_cell = r.choice(cells)
-    current_cell = initial_cell
-
-    visited = set()
-    visited.add(current_cell)
-
-    removed_walls = set()
-
-    stack = []
-
-    while set(cells) - visited:
-        neighbours = set(cardinal_neighbourhood(current_cell))
-        neighbours &= set(cells)
-
-        # If the current cell has any neighbours which have not been visited
-        if neighbours - visited:
-            # Choose random one of the unvisited neighbours
-            neighbour = r.choice(list(neighbours - visited))
-            # Push the current cell to the stack
-            stack.append(current_cell)
-            # Remove the wall between the current cell and the chosen cell
-            removed_walls.add((neighbour, current_cell))
-            # Make the chosen cell the current cell and mark it as visited
-            current_cell = neighbour
-            visited.add(current_cell)
-        elif stack:
-            current_cell = stack.pop()
-        else:
-            current_cell = r.choice(cells)
-            visited.add(current_cell)
-
-    # Now we have a number of eliminated walls
-    world = {}
-
-    for x,y in itertools.product(range(X), range(Y)):
-        world[x,y] = [(constants.OBJ_WALL, {})]
-
-    for point_a, point_b in removed_walls:
-        real_a = (point_a[0] * 2, point_a[1] * 2)
-        real_b = (point_b[0] * 2, point_b[1] * 2)
-
-        # The removed wall is the shared neighbourhood between them
-        shared = set(cardinal_neighbourhood(real_a))
-        shared &= set(neighbourhood(real_b))
-
-        assert len(shared) == 1
-
-        world[shared.pop()] = [(constants.OBJ_EMPTY, {})]
-        world[real_a] = [(constants.OBJ_EMPTY, {})]
-        world[real_b] = [(constants.OBJ_EMPTY, {})]
-
-    return world
-
-def pretty_walls(world):
-    for coord, objects in world.items():
-        if objects[0][0] == constants.OBJ_EMPTY:
-            continue
-
-        vertical = False
-        horizontal = False
-
-        for neighbour in ((coord[0], coord[1] - 1), (coord[0], coord[1] + 1)):
-            if neighbour not in world:
-                continue
-            if world[neighbour][0][0] != constants.OBJ_EMPTY:
-                vertical = True
-                break
-
-        for neighbour in ((coord[0] - 1, coord[1]), (coord[0] + 1, coord[1])):
-            if neighbour not in world:
-                continue
-            if world[neighbour][0][0] != constants.OBJ_EMPTY:
-                horizontal = True
-                break
-
-        if not vertical and not horizontal:
-            # Do nothing
-            continue
-        elif vertical and not horizontal:
-            del objects[0]
-            objects.append((constants.OBJ_VERTICAL_WALL, {}))
-        elif not vertical and horizontal:
-            del objects[0]
-            objects.append((constants.OBJ_HORIZONTAL_WALL, {}))
-        elif vertical and horizontal:
-            del objects[0]
-            objects.append((constants.OBJ_CORNER_WALL, {}))
-
-    return world
 
 def _visible_world(world, visible):
     visible_world = {}
@@ -674,11 +543,11 @@ def pack_attribute(obj_attr):
 
 class Game(object):
     MAP_GENERATORS = {
-        'purerandom': map_purerandom,
-        'empty': map_empty,
-        'ca_maze': map_ca_maze,
-        'ca_caves': map_ca_caves,
-        'depth_first': map_depth_first,
+        'purerandom': maps.map_purerandom,
+        'empty': maps.map_empty,
+        'ca_maze': maps.map_ca_maze,
+        'ca_caves': maps.map_ca_caves,
+        'depth_first': maps.map_depth_first,
     }
     VISION_FUNCTIONS = {
         'square': vision_square,
@@ -1283,7 +1152,6 @@ class Game(object):
         self._tick_bullets(time_diff_s)
         self._tick_explosions(time_diff_s)
         self._tick_slimes(time_diff_s)
-        self._tick_lava(time_diff_s)
 
         packets = []
         packets.extend(self._event_check())
@@ -1437,8 +1305,6 @@ class Game(object):
                 attr['owner'] = bullet[1]['owner']
                 attr['size'] = bullet[1]['size']
                 attr['_spread_to'] = set([slime_coord])
-                attr['_damaged'] = []
-
 
                 slime = (constants.OBJ_SLIME, attr)
                 self.world[slime_coord].append(slime)
@@ -1446,26 +1312,8 @@ class Game(object):
         # end for
 
         for coord, slime in self.find_objs(constants.OBJ_SLIME):
-            for obj in self.world[coord]:
-                if obj == slime:
-                    continue
-                elif obj[0] in constants.SLIMEABLE:
-                    if obj in slime[1]['_damaged']:
-                        continue
-                    else:
-                        slime[1]['_damaged'].append(obj)
-
-                    self._damage_object(coord, obj, constants.SLIME_DAMAGE)
-                    self._mark_dirty_cell(coord)
-
             attr = slime[1]
-            if '_death_time' in attr:
-                attr['_death_time'] -= time_passed
-                if attr['_death_time'] < 0:
-                    self.world[coord].remove(slime)
-                    self._mark_dirty_cell(coord)
-                    continue
-
+            #TODO kill slime after a bit
             if '_spread_time' not in attr:
                 attr['_spread_time'] = constants.SLIME_SPREAD_TIME
 
@@ -1478,11 +1326,6 @@ class Game(object):
 
                 slime_spread = constants.SLIME_SPREAD[attr['size']]
                 spreads_remaining = slime_spread - len(attr['_spread_to'])
-
-                if spreads_remaining == 0:
-                    attr['_death_time'] = constants.SLIME_SPREAD_TIME
-                    break
-
 
                 assert spreads_remaining >= 0
 
@@ -1501,37 +1344,10 @@ class Game(object):
                     new_attr['owner'] = slime[1]['owner']
                     new_attr['size'] = slime[1]['size']
                     new_attr['_spread_to'] = slime[1]['_spread_to']
-                    new_attr['_damaged'] = slime[1]['_damaged']
 
                     slime = (constants.OBJ_SLIME, new_attr)
                     self.world[spread_coord].append(slime)
 
-    def _tick_lava(self, time_passed):
-        for coord, lava in self.find_objs(constants.OBJ_LAVA):
-            # Lava damages people in a pool on regular intervals
-            # Getting syncronised lava damaging is difficult, so we'll just
-            # do it every LAVA_TIME seconds
-            attr = lava[1]
-
-            if '_time_passed' not in attr:
-                attr['_time_passed'] = 0
-
-            attr['_time_passed'] += time_passed
-
-            times = attr['_time_passed'] // constants.LAVA_TIME
-
-            if times:
-                attr['_time_passed'] %= constants.LAVA_TIME
-                for other in self.world[coord]:
-                    if other == lava:
-                        continue
-                    else:
-                        damage = constants.LAVA_DAMAGE
-                        for i in range(times):
-                            self._damage_object(coord, other, damage)
-
-            if attr['_spreading']:
-                pass #LAVA SPREADS, EVERYONE DIES
 
     def _damage_object(self, coord, object, amount):
         is_player = object[0] == constants.OBJ_PLAYER
@@ -1548,11 +1364,6 @@ class Game(object):
             else:
                 self.world[coord].remove(object)
                 self._mark_dirty_cell(coord)
-
-            if object[0] == constants.OBJ_MINE:
-                # Mines explode when they're destroyed.
-                self._make_explosion(coord, object[1]['size'])
-
         elif is_player:
             player_id = object[1]['player_id']
             event_type = constants.STATUS_DAMAGED
