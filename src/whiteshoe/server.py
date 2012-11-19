@@ -449,7 +449,7 @@ def vision_rays(world, coord, direction=None):
             yield half_radius, -n
 
     # Parameters
-    MAX_RADIUS = 15
+    MAX_RADIUS = 60
     Y_RADIUS_SCALE = 3
     APPROXIMATION_ACCURACY = 3
     # End of parameters
@@ -469,15 +469,17 @@ def vision_rays(world, coord, direction=None):
     blocked_directions = {}
     potential_corners = []
     for x, y in right_points_by_distance(MAX_RADIUS):
-        # Early exit: discard any points outside the maximum radius
         radius_squared = x_scale*x*x + y_scale*y*y
-        if radius_squared > MAX_RADIUS_SQUARED:
-            continue
         # Peripheral vision limits
-        if x == 0 and abs(y) > MAX_RADIUS*(1.0/3.0):
+        if y == 0 and x > MAX_RADIUS:
             continue
-        if x == 1 and abs(y) > MAX_RADIUS*(2.0/3.0):
-            continue
+        elif y != 0:
+            # Early exit: discard any points outside the maximum radius
+            local_max_radius = abs(float(x)**0.3/float(y))
+            local_max_radius = local_max_radius/(1 + local_max_radius)
+            local_max_radius *= MAX_RADIUS
+            if radius_squared > local_max_radius * local_max_radius:
+                continue
         direction_fraction = fractions.Fraction(x, y).limit_denominator(APPROXIMATION_ACCURACY) if y != 0 else None
         block_distance_squared = blocked_directions.get(direction_fraction, float('inf'))
         if radius_squared > block_distance_squared:
