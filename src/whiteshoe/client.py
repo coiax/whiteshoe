@@ -25,11 +25,13 @@ def client_main(args=None):
     p.add_argument('-c','--connect',default="::1",dest='ipaddr')
     p.add_argument('-n','--name')
     p.add_argument('-t','--team',type=int)
+    p.add_argument('--socket-type',default='tcp')
 
     ns = p.parse_args(args)
+    print(ns)
 
     #logging.basicConfig(filename='client.log',level=logging.DEBUG)
-    network = ClientNetwork()
+    network = ClientNetwork(ns.socket_type)
     network.connect((ns.ipaddr, None))
 
     #network.join_game((ns.connect, None), autojoin=True)
@@ -531,7 +533,7 @@ class GameScene(object):
                 pass
 
 class ClientNetwork(object):
-    def __init__(self):
+    def __init__(self,socket_type='tcp'):
         self.handlers = {
             # c->s get games list
             constants.GAMES_RUNNING: self._games_running,
@@ -545,6 +547,8 @@ class ClientNetwork(object):
         }
 
         self.socket = None
+        assert socket_type in ('tcp','udp')
+        self.socket_type = socket_type
 
         self.known_world = {}
 
@@ -558,9 +562,10 @@ class ClientNetwork(object):
         self.lastheard_timer = utility.Stopwatch()
 
         self._cached_player = None
+        self._buffer = ''
 
     def connect(self, addr):
-        address_type = socket.AF_INET6
+        family = socket.AF_INET6
 
         ip,port = addr
 
@@ -568,12 +573,20 @@ class ClientNetwork(object):
             port = constants.DEFAULT_PORT
 
         if '.' in ip:
-            address_type = socket.AF_INET
+            family = socket.AF_INET
         elif ':' in ip:
-            address_type = socket.AF_INET6
+            family = socket.AF_INET6
 
-        self.socket = socket.socket(address_type,socket.SOCK_DGRAM)
+        if self.socket_type == 'tcp':
+            type_ = socket.SOCK_STREAM
+        elif self.socket_type == 'udp':
+            type_ = socket.SOCK_DGRAM
+
+        self.socket = socket.socket(family, type_)
         self._server_addr = (ip, port)
+
+        if self.socket_type == 'tcp':
+            self.socket.connect((ip, port))
 
         self._send_keepalive()
         self.lastheard_timer.start()
@@ -597,7 +610,7 @@ class ClientNetwork(object):
         if player_team is not None:
             p.player_team = player_team
 
-        self._send_packets([p], self._server_addr)
+        self._send_packets([p])
 
     def update(self):
         # Do network things
@@ -621,18 +634,30 @@ class ClientNetwork(object):
             p.payload_types.append(constants.DISCONNECT)
             p.disconnect_code = reason
 
-            self._send_packets((p,), self._server_addr)
+            self._send_packets((p,))
 
     def _ticklet(self):
         rlist, wlist, xlist = select.select((self.socket,),(),(),0.1)
         for rs in rlist:
-            data, addr = rs.recvfrom(4096)
+            if self.socket_type == 'udp':
+                data, addr = rs.recvfrom(4096)
+                chunks = (data,)
+            elif self.socket_type == 'tcp':
+                data = rs.recv(4096)
+                if not data:
+                    raise ServerDisconnect
+
+                self._buffer += data
+                chunks, buffer = utility.stream_unwrap(self._buffer)
+                self._buffer = buffer
+
             self.lastheard_timer.restart()
             try:
-                packet = packet_pb2.Packet.FromString(data)
+                for chunk in chunks:
+                    packet = packet_pb2.Packet.FromString(chunk)
 
-                for payload_type in packet.payload_types:
-                    self.handlers[payload_type](packet, addr)
+                    for payload_type in packet.payload_types:
+                        self.handlers[payload_type](packet)
 
             except Exception as e:
                 #traceback.print_exc()
@@ -645,12 +670,16 @@ class ClientNetwork(object):
         p.payload_types.append(constants.KEEP_ALIVE)
         p.timestamp = int(time.time())
 
-        self._send_packets([p], self._server_addr)
+        self._send_packets([p])
 
-    def _send_packets(self, packets, addr):
+    def _send_packets(self, packets):
         if self.socket is not None:
             for packet in packets:
-                self.socket.sendto(packet.SerializeToString(), addr)
+                data = packet.SerializeToString()
+                if self.socket_type == 'tcp':
+                    self.socket.sendall(utility.stream_wrap(data))
+                elif self.socket_type == 'udp':
+                    self.socket.sendto(data, self._server_addr)
 
             self.keepalive_timer.restart()
 
@@ -670,7 +699,7 @@ class ClientNetwork(object):
         p.action = cmd_num
         p.argument = arg_num
 
-        self._send_packets([p],self._server_addr)
+        self._send_packets([p])
 
     def find_me(self):
         assert self.socket is not None
@@ -700,11 +729,11 @@ class ClientNetwork(object):
         return e
 
     # packet handlers
-    def _games_running(self, packet, addr):
+    def _games_running(self, packet):
         pass
-    def _error(self, packet, addr):
+    def _error(self, packet):
         pass
-    def _vision_update(self, packet, addr):
+    def _vision_update(self, packet):
         """
         repeated sint32 objects = 600 [packed=true];
         // objects consists of 4-tuples: x,y,obj_type,attr_id
@@ -760,10 +789,10 @@ class ClientNetwork(object):
 
             self.known_world[x,y].append((obj_type, attr))
 
-    def _keep_alive(self, packet, addr):
+    def _keep_alive(self, packet):
         pass
 
-    def _game_status(self, packet, addr):
+    def _game_status(self, packet):
         status = packet.status
 
         event = None
@@ -811,7 +840,7 @@ class ClientNetwork(object):
 
         self.events.append(event)
 
-    def _disconnect(self, packet, addr):
+    def _disconnect(self, packet):
         # Like STATUS_LEFT, but we remove all information about the server
 
         self.known_world = {}
