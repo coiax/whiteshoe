@@ -4,6 +4,8 @@ import collections
 import datetime
 import logging
 import random
+import re
+import struct
 
 import constants
 
@@ -299,3 +301,38 @@ def ca_world_to_world(ca_world,inverse=False):
             world[coord] = [(constants.OBJ_EMPTY, {})]
 
     return world
+
+_stream_fmt = '>L'
+
+def stream_wrap(data):
+    # Take binary data, and prepend a four byte integer size
+    # and return the new data with the size prepended
+    size = len(data)
+
+    size_bytes = struct.pack(_stream_fmt, size)
+
+    return size_bytes + data
+
+def stream_unwrap(data):
+    # Given a stream of binary data, prepended with four bytes integer
+    # sizes, return a list of binary datas, and unconsumed data
+
+    unpacked = []
+
+    minimum_size = struct.calcsize(_stream_fmt)
+
+    while True:
+        if len(data) < minimum_size:
+            break
+        next_chunk_size = struct.unpack(_stream_fmt, data[:minimum_size])[0]
+
+        if len(data) < minimum_size + next_chunk_size:
+            break
+        else:
+            # Chop the leading size integer off
+            data = data[minimum_size:]
+            unpacked.append(data[:next_chunk_size])
+
+            data = data[next_chunk_size:]
+
+    return unpacked, data
