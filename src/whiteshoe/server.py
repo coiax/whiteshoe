@@ -1521,6 +1521,11 @@ class Game(object):
             else:
                 self.world[coord].remove(object)
                 self._mark_dirty_cell(coord)
+
+            if object[0] == constants.OBJ_MINE:
+                # Mines explode when they're destroyed.
+                self._make_explosion(coord, object[1]['size'])
+
         elif is_player:
             player_id = object[1]['player_id']
             event_type = constants.STATUS_DAMAGED
