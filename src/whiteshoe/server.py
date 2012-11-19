@@ -897,6 +897,7 @@ class Game(object):
         self._tick_bullets(time_diff_s)
         self._tick_explosions(time_diff_s)
         self._tick_slimes(time_diff_s)
+        self._tick_lava(time_diff_s)
 
         packets = []
         packets.extend(self._event_check())
@@ -1050,6 +1051,7 @@ class Game(object):
                 attr['owner'] = bullet[1]['owner']
                 attr['size'] = bullet[1]['size']
                 attr['_spread_to'] = set([slime_coord])
+                attr['_damaged'] = []
 
                 slime = (constants.OBJ_SLIME, attr)
                 self.world[slime_coord].append(slime)
@@ -1057,8 +1059,26 @@ class Game(object):
         # end for
 
         for coord, slime in self.find_objs(constants.OBJ_SLIME):
+            for obj in self.world[coord]:
+                if obj == slime:
+                    continue
+                elif obj[0] in constants.SLIMEABLE:
+                    if obj in slime[1]['_damaged']:
+                        continue
+                    else:
+                        slime[1]['_damaged'].append(obj)
+
+                    self._damage_object(coord, obj, constants.SLIME_DAMAGE)
+                    self._mark_dirty_cell(coord)
+
             attr = slime[1]
-            #TODO kill slime after a bit
+            if '_death_time' in attr:
+                attr['_death_time'] -= time_passed
+                if attr['_death_time'] < 0:
+                    self.world[coord].remove(slime)
+                    self._mark_dirty_cell(coord)
+                    continue
+
             if '_spread_time' not in attr:
                 attr['_spread_time'] = constants.SLIME_SPREAD_TIME
 
@@ -1071,6 +1091,10 @@ class Game(object):
 
                 slime_spread = constants.SLIME_SPREAD[attr['size']]
                 spreads_remaining = slime_spread - len(attr['_spread_to'])
+
+                if spreads_remaining == 0:
+                    attr['_death_time'] = constants.SLIME_SPREAD_TIME
+                    break
 
                 assert spreads_remaining >= 0
 
@@ -1089,10 +1113,37 @@ class Game(object):
                     new_attr['owner'] = slime[1]['owner']
                     new_attr['size'] = slime[1]['size']
                     new_attr['_spread_to'] = slime[1]['_spread_to']
+                    new_attr['_damaged'] = slime[1]['_damaged']
 
                     slime = (constants.OBJ_SLIME, new_attr)
                     self.world[spread_coord].append(slime)
 
+    def _tick_lava(self, time_passed):
+        for coord, lava in self.find_objs(constants.OBJ_LAVA):
+            # Lava damages people in a pool on regular intervals
+            # Getting syncronised lava damaging is difficult, so we'll just
+            # do it every LAVA_TIME seconds
+            attr = lava[1]
+
+            if '_time_passed' not in attr:
+                attr['_time_passed'] = 0
+
+            attr['_time_passed'] += time_passed
+
+            times = attr['_time_passed'] // constants.LAVA_TIME
+
+            if times:
+                attr['_time_passed'] %= constants.LAVA_TIME
+                for other in self.world[coord]:
+                    if other == lava:
+                        continue
+                    else:
+                        damage = constants.LAVA_DAMAGE
+                        for i in range(times):
+                            self._damage_object(coord, other, damage)
+
+            if attr['_spreading']:
+                pass #LAVA SPREADS, EVERYONE DIES
 
     def _damage_object(self, coord, object, amount):
         is_player = object[0] == constants.OBJ_PLAYER
@@ -1109,6 +1160,11 @@ class Game(object):
             else:
                 self.world[coord].remove(object)
                 self._mark_dirty_cell(coord)
+
+            if object[0] == constants.OBJ_MINE:
+                # Mines explode when they're destroyed
+                self._make_explosion(coord, object[1]['size'])
+
         elif is_player:
             player_id = object[1]['player_id']
             event_type = constants.STATUS_DAMAGED
