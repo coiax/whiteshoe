@@ -27,6 +27,7 @@ class Constants(object):
     OBJ_MINE = "mine"
     OBJ_SLIME = "slime"
     OBJ_SLIME_BULLET = "slime-bullet"
+    OBJ_LAVA = "lava"
 
     N1 = 1
     N2 = 2

@@ -408,7 +408,8 @@ class GameScene(object):
             constants.OBJ_EXPLOSION: '*',
             constants.OBJ_MINE: ';',
             constants.OBJ_SLIME_BULLET: '$',
-            constants.OBJ_SLIME: '$'}.get(obj,'?')
+            constants.OBJ_SLIME: '$',
+            constants.OBJ_LAVA: '~'}.get(obj,'?')
 
         if obj == constants.OBJ_PLAYER:
             direction = attr['direction']
@@ -450,6 +451,8 @@ class GameScene(object):
                 display_chr = 'g'
         elif obj == constants.OBJ_SLIME:
             colour = curses.color_pair(1) | curses.A_BOLD
+        elif obj == constants.OBJ_LAVA:
+            colour = curses.color_pair(4) | curses.A_BOLD
 
         assert display_chr is not None
 
