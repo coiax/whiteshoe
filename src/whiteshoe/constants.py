@@ -72,6 +72,9 @@ class Constants(object):
     SLIME_SPREAD_TIME = 0.3
     SLIME_DAMAGE = 5
 
+    LAVA_TIME = 0.5
+    LAVA_DAMAGE = 1
+
     PACKET_SIZE_LIMIT = 600
     DEFAULT_PORT = 25008
     TIMEOUT = 30

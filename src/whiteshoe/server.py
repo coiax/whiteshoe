@@ -1283,6 +1283,7 @@ class Game(object):
         self._tick_bullets(time_diff_s)
         self._tick_explosions(time_diff_s)
         self._tick_slimes(time_diff_s)
+        self._tick_lava(time_diff_s)
 
         packets = []
         packets.extend(self._event_check())
@@ -1505,6 +1506,32 @@ class Game(object):
                     slime = (constants.OBJ_SLIME, new_attr)
                     self.world[spread_coord].append(slime)
 
+    def _tick_lava(self, time_passed):
+        for coord, lava in self.find_objs(constants.OBJ_LAVA):
+            # Lava damages people in a pool on regular intervals
+            # Getting syncronised lava damaging is difficult, so we'll just
+            # do it every LAVA_TIME seconds
+            attr = lava[1]
+
+            if '_time_passed' not in attr:
+                attr['_time_passed'] = 0
+
+            attr['_time_passed'] += time_passed
+
+            times = attr['_time_passed'] // constants.LAVA_TIME
+
+            if times:
+                attr['_time_passed'] %= constants.LAVA_TIME
+                for other in self.world[coord]:
+                    if other == lava:
+                        continue
+                    else:
+                        damage = constants.LAVA_DAMAGE
+                        for i in range(times):
+                            self._damage_object(coord, other, damage)
+
+            if attr['_spreading']:
+                pass #LAVA SPREADS, EVERYONE DIES
 
     def _damage_object(self, coord, object, amount):
         is_player = object[0] == constants.OBJ_PLAYER
