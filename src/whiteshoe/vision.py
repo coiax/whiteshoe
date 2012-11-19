@@ -1,6 +1,7 @@
 import itertools
 import random
 import collections
+import fractions
 
 import constants
 
