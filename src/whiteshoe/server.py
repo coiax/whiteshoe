@@ -544,13 +544,7 @@ def pack_attribute(obj_attr):
     return attribute
 
 class Game(object):
-    MAP_GENERATORS = {
-        'purerandom': maps.map_purerandom,
-        'empty': maps.map_empty,
-        'ca_maze': maps.map_ca_maze,
-        'ca_caves': maps.map_ca_caves,
-        'depth_first': maps.map_depth_first,
-    }
+    MAP_GENERATORS = maps.generators
     VISION_FUNCTIONS = {
         'square': vision_square,
         'cone': vision_cone,

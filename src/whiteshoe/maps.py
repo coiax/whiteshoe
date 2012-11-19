@@ -5,7 +5,14 @@ import constants
 import utility
 import itertools
 
-def map_purerandom(X=80,Y=24,seed=0):
+generators = {}
+
+def generator(fn):
+    generators[fn.__name__] = fn
+    return fn
+
+@generator
+def purerandom(X=80,Y=24,seed=0):
     world = {}
     r = random.Random(seed)
 
@@ -17,14 +24,16 @@ def map_purerandom(X=80,Y=24,seed=0):
 
     return world
 
-def map_empty(X=80,Y=24,seed=None):
+@generator
+def empty(X=80,Y=24,seed=None):
     world = {}
 
     for i,j in itertools.product(range(X), range(Y)):
         world[i,j] = [(constants.OBJ_EMPTY, {})]
     return world
 
-def map_ca_maze(X=80,Y=24,seed=1):
+@generator
+def ca_maze(X=80,Y=24,seed=1):
     ca_world = utility.CellularAutomaton(X, Y)
     r = random.Random(seed)
     ca_world.seed(0.35,rng=r)
@@ -32,7 +41,8 @@ def map_ca_maze(X=80,Y=24,seed=1):
 
     return utility.ca_world_to_world(ca_world)
 
-def map_ca_caves(X=80,Y=24,seed=1):
+@generator
+def ca_caves(X=80,Y=24,seed=1):
     ca_world = utility.CellularAutomaton(X, Y)
     r = random.Random(seed)
     ca_world.seed(0.5, rng=r)
@@ -41,7 +51,8 @@ def map_ca_caves(X=80,Y=24,seed=1):
     # Now the maze CA tends to generate isolated islands
     return utility.ca_world_to_world(ca_world)
 
-def map_depth_first(X=80, Y=24, seed=0):
+@generator
+def depth_first(X=80, Y=24, seed=0):
     r = random.Random(seed)
 
     # The division by 2 will be important later
