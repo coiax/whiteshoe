@@ -138,6 +138,19 @@ class Constants(object):
     CAN_STAB = (OBJ_PLAYER,)
     SLIMEABLE = (OBJ_PLAYER, OBJ_MINE)
 
+    DISPLAY_CHAR = {
+        OBJ_PLAYER: '@',
+        OBJ_WALL: '#',
+        OBJ_HORIZONTAL_WALL: '-',
+        OBJ_VERTICAL_WALL: '|',
+        OBJ_CORNER_WALL: '+',
+        OBJ_BULLET: ':',
+        OBJ_SLIME: '$',
+        OBJ_SLIME_BULLET: '$',
+        OBJ_LAVA: '~',
+        OBJ_EMPTY: '.',
+    }
+
     ATTRIBUTE_KEYS = ("player_id", "direction", "team", "hp_max", "hp",
                       "max_ammo", "ammo", "owner","size","historical",
                       "name")
