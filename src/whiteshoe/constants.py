@@ -41,6 +41,7 @@ class Constants(object):
     SMALL_SLIME = "small-slime"
     BIG_SLIME = "big-slime"
 
+
     # Check for duplicate values
     assert sorted(vars().values()) == sorted(set(vars().values())) # duplicates
 
@@ -78,6 +79,12 @@ class Constants(object):
     PACKET_SIZE_LIMIT = 600
     DEFAULT_PORT = 25008
     TIMEOUT = 30
+
+    DAMAGETYPE_UNKNOWN = 1
+    DAMAGETYPE_STAB = 2
+    DAMAGETYPE_EXPLOSION = 3
+    DAMAGETYPE_SLIME = 4
+    DAMAGETYPE_LAVA = 5
 
     GET_GAMES_LIST = 0
     GAMES_RUNNING = 1
@@ -133,6 +140,7 @@ class Constants(object):
     AIRTIGHT_OBJECTS = WALLS
     OPAQUE_OBJECTS = WALLS
     ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,OBJ_SLIME)
+    TEMPORARY_OBJECTS = (OBJ_EXPLOSION, OBJ_SLIME)
 
     VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET,
                               OBJ_MINE)
@@ -172,6 +180,9 @@ class Constants(object):
     EXPLOSION_LIFE = 0.5
     KEEPALIVE_TIME = 5
     STAB_DAMAGE = 2
+
+    ORIGIN_UNKNOWN = -1
+    ORIGIN_ENVIRONMENT = -2
 
     MINE_DIRECT_PROBABILITY = 0.98
     MINE_SIDE_PROBABILITY = 0.50

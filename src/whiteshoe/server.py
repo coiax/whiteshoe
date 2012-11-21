@@ -21,7 +21,7 @@ from utility import (neighbourhood, get_id, bytes_to_human, dict_difference,
 import utility
 import maps
 import vision
-import games
+import game
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +56,7 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        game_cls = games.modes['ffa']
+        game_cls = game.modes['ffa']
 
         g = game_cls(vision=options['vision'], map_generator=options['map'])
         self.games.append(g)
@@ -353,9 +353,6 @@ def display_stats(stats):
     sys.stderr.flush()
 
 class ServerException(Exception):
-    pass
-
-class PlayerNotFound(ServerException):
     pass
 
 if __name__=='__main__':

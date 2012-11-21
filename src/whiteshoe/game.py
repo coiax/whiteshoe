@@ -1,4 +1,5 @@
 import random
+import collections
 
 import utility
 import constants
@@ -8,11 +9,11 @@ import vision
 
 modes = {}
 
-def mode(cls):
+def gamemode(cls):
     modes[cls.mode] = cls
     return cls
 
-@mode
+@gamemode
 class BaseGame(object):
     MAP_GENERATORS = maps.generators
     VISION_FUNCTIONS = vision.functions
@@ -43,6 +44,8 @@ class BaseGame(object):
         self.players = []
         self.known_worlds = {}
         self.events = []
+        self.scores = collections.defaultdict(int)
+        self._update_scores = False
 
         self.tick_stopwatch = utility.Stopwatch()
 
@@ -106,17 +109,21 @@ class BaseGame(object):
 
         return location, player
 
-    def _kill_player(self, player_id):
+    def _kill_player(self, player_id, responsible, damage_type):
         old_location, old_player = self._remove_player(player_id)
+
+        if responsible in (player_id, constants.ORIGIN_ENVIRONMENT):
+            delta = -1
+        else:
+            delta = +1
+
+        self.scores[responsible] += delta
+        self._update_scores = True
 
         self.known_worlds[player_id] = {}
 
         event_type = constants.STATUS_DEATH
-            # TODO later put the damage type, and MAYBE the person
-            # responsible
-        responsible_id = -1
-        damage_type = 0
-        event = (player_id, event_type, responsible_id, damage_type)
+        event = (player_id, event_type, responsible, damage_type)
         self.events.append(event)
 
         new_location, player = self._spawn_player(player_id)
@@ -394,8 +401,11 @@ class BaseGame(object):
                 # Special case stabbing things.
                 for object in self.world[new_location]:
                     if object[0] in constants.CAN_STAB:
+                        responsible = player[1]['player_id']
                         self._damage_object(new_location, object,
-                                            constants.STAB_DAMAGE)
+                                            constants.STAB_DAMAGE,
+                                            constants.DAMAGETYPE_STAB,
+                                            responsible)
                         self._mark_dirty_cell(new_location)
 
         else:
@@ -501,7 +511,8 @@ class BaseGame(object):
 
                     player[1]['ammo'] += ammo_increase
                 else:
-                    self._make_explosion(new_location, size)
+                    responsible = player[1]['player_id']
+                    self._make_explosion(new_location, size, responsible)
 
     def _mark_dirty_cell(self, coord):
         self._dirty_coords.add(coord)
@@ -572,6 +583,20 @@ class BaseGame(object):
                 packets.append((player_id, p))
                 p = None
 
+        if self._update_scores:
+            self._update_scores = False
+            p = packet_pb2.Packet()
+            p.packet_id = utility.get_id('packet')
+            p.payload_types.append(constants.GAME_STATUS)
+            p.status_game_id = self.id
+
+            p.status = constants.STATUS_SCORES
+            for player_id in sorted(self.scores):
+                p.scores.append(player_id)
+                p.scores.append(self.scores[player_id])
+            for player_id in self.players:
+                packets.append((player_id,p))
+
         return packets
 
     def tick(self):
@@ -629,7 +654,7 @@ class BaseGame(object):
                                 for o in self.world[new_coord])
 
                 if any_solid:
-                    self._make_explosion(new_coord, size)
+                    self._make_explosion(new_coord, size, attr['owner'])
                     exploded = True
 
                 if exploded:
@@ -641,13 +666,16 @@ class BaseGame(object):
                     coord = new_coord
                     # Then the while loop may continue
 
-    def _make_explosion(self, coord, size):
+    def _make_explosion(self, coord, size, responsible=None):
+        if responsible is None:
+            responsible = constants.ORIGIN_UNKNOWN
+
         for ex_coord in utility.neighbourhood(coord,n=size-1):
             if ex_coord not in self.world:
                 continue
 
             explosion = (constants.OBJ_EXPLOSION,
-                         {'_damage':size**2})
+                         {'_damage':size**2, '_responsible':responsible})
 
             self.world[ex_coord].append(explosion)
             self._mark_dirty_cell(ex_coord)
@@ -669,17 +697,11 @@ class BaseGame(object):
                     else:
                         attr['_damaged'].append(object)
 
-                    self._damage_object(coord, object, attr['_damage'])
+                    self._damage_object(coord, object, attr['_damage'],
+                                        constants.DAMAGETYPE_EXPLOSION,
+                                        attr['_responsible'])
                     self._mark_dirty_cell(coord)
 
-                    non_explosions = [o for o in self.world[coord]
-                                      if o[0] != constants.OBJ_EXPLOSION]
-
-                    if not non_explosions:
-                        # If we've destroyed everything else,
-                        # insert a new EMPTY into the world
-                        empty = (constants.OBJ_EMPTY, {})
-                        self.world[coord].insert(0,empty)
 
             attr['_time_left'] -= time_passed
             if attr['_time_left'] < 0:
@@ -760,7 +782,11 @@ class BaseGame(object):
                     else:
                         slime[1]['_damaged'].append(obj)
 
-                    self._damage_object(coord, obj, constants.SLIME_DAMAGE)
+                    responsible = slime[1]['owner']
+
+                    self._damage_object(coord, obj, constants.SLIME_DAMAGE,
+                                        constants.DAMAGETYPE_SLIME,
+                                        responsible)
                     self._mark_dirty_cell(coord)
 
             attr = slime[1]
@@ -830,14 +856,24 @@ class BaseGame(object):
                     if other == lava:
                         continue
                     else:
-                        damage = constants.LAVA_DAMAGE
-                        for i in range(times):
-                            self._damage_object(coord, other, damage)
+                        damage = constants.LAVA_DAMAGE * times
+                        damage_type = constants.DAMAGE_LAVA
+                        responsible = constants.ORIGIN_ENVIRONMENT
+                        self._damage_object(coord, other, damage, damage_type,
+                                            responsible)
 
             if attr['_spreading']:
                 pass #LAVA SPREADS, EVERYONE DIES
 
-    def _damage_object(self, coord, object, amount):
+    def _damage_object(self, coord, object, amount, damage_type=None,
+                       responsible=None):
+
+        if damage_type is None:
+            damage_type = constants.DAMAGE_UNKNOWN
+
+        if responsible is None:
+            responsible = constants.ORIGIN_UNKNOWN
+
         is_player = object[0] == constants.OBJ_PLAYER
 
         hp = object[1].get('hp', 0)
@@ -848,24 +884,31 @@ class BaseGame(object):
         if hp <= 0:
             if is_player:
                 player_id = object[1]['player_id']
-                self._kill_player(player_id)
+                self._kill_player(player_id, responsible, damage_type)
             else:
                 self.world[coord].remove(object)
                 self._mark_dirty_cell(coord)
 
             if object[0] == constants.OBJ_MINE:
                 # Mines explode when they're destroyed
-                self._make_explosion(coord, object[1]['size'])
+                self._make_explosion(coord, object[1]['size'], responsible)
 
         elif is_player:
             player_id = object[1]['player_id']
             event_type = constants.STATUS_DAMAGED
-            # TODO later put the damage type, and MAYBE the person
-            # responsible
-            responsible_id = -1
-            damage_type = 0
-            event = (player_id, event_type, responsible_id, damage_type)
+            event = (player_id, event_type, responsible, damage_type)
             self.events.append(event)
+
+        # Finally
+        non_temporary = [o for o in self.world[coord]
+                         if o[0] not in constants.TEMPORARY_OBJECTS]
+
+        if not non_temporary:
+            # If we've destroyed everything else,
+            # insert a new EMPTY into the world
+            empty = (constants.OBJ_EMPTY, {})
+            self.world[coord].insert(0,empty)
+            self._mark_dirty_cell(coord)
 
 def network_pack_object(coord, object):
     x,y = coord
@@ -895,7 +938,7 @@ def pack_attribute(obj_attr):
             setattr(attribute, key, value)
     return attribute
 
-@mode
+@gamemode
 class FreeForAllGame(BaseGame):
     mode = 'ffa'
 
