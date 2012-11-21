@@ -215,6 +215,7 @@ class Server(object):
             except Exception as e:
                 if self.debug:
                     # If we're debugging, then the server can crash
+                    # TODO Notify all connected clients of server crash
                     raise
                 else:
                     traceback.print_exc()
