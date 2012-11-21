@@ -385,7 +385,6 @@ class Game(object):
     def __init__(self,max_players=20,map_generator='purerandom',
                  name='Untitled',mode='ffa',id=None,vision='basic'):
 
-        # Same as random module for now, later we can change it
         self.random = random.Random(0)
 
         self.max_players = max_players
