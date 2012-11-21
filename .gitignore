@@ -71,3 +71,7 @@ nosetests.xml
 
 *_pb2.py
 whiteshoe*.tar*
+
+# Setup for bugs everywhere
+!.be
+.be/id-cache
