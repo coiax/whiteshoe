@@ -42,6 +42,8 @@ class BaseGame(object):
         self.vision = vision
 
         self.players = []
+        self.player_attr = {}
+
         self.known_worlds = {}
         self.events = []
         self.scores = collections.defaultdict(int)
@@ -140,6 +142,7 @@ class BaseGame(object):
 
         self.players.append(player_id)
         self.known_worlds[player_id] = {}
+        self.player_attr = {}
 
         location, player = self._spawn_player(player_id)
 
@@ -149,13 +152,15 @@ class BaseGame(object):
         if team is not None:
             attr['team'] = team
 
+        self.player_attr[player_id]['name'] = name
+        self.player_attr[player_id]['team'] = team
 
         join_packet = packet_pb2.Packet()
         join_packet.packet_id = utility.get_id('packet')
         join_packet.payload_types.append(constants.GAME_STATUS)
 
         join_packet.status_game_id = self.id
-        join_packet.status = constants.STATUS_JOINED
+        join_packet.status = constants.STATUS_GAMEINFO
         join_packet.your_player_id = player_id
         join_packet.game_name = self.name
         join_packet.game_mode = self.mode
@@ -167,6 +172,12 @@ class BaseGame(object):
 
         packets = [(player_id, join_packet)]
 
+        # TODO inform the joined player of other players in the game
+        # through use of JOINED events set historical
+
+        self._update_scores = True
+
+        packets.extend(self._event_check())
         packets.extend(self._flush_dirty())
 
         return packets
@@ -239,9 +250,13 @@ class BaseGame(object):
             self._remove_player(player_id)
 
         del self.known_worlds[player_id]
+        del self.player_attr[player_id]
         self.players.remove(player_id)
 
-        return self._flush_dirty()
+        packets = []
+        packets.extend(self._event_check())
+        packets.extend(self._flush_dirty())
+        return packets
 
     def _determine_can_see(self, coord, direction):
         vision_func = self.VISION_FUNCTIONS[self.vision]

@@ -73,14 +73,22 @@ message Packet {
     optional int32 status = 801;
 
     // general
-    optional int32 your_player_id = 802;
+    // the player_id that this event is about or concerns
+    optional int32 player_id = 802;
+    optional bool historical = 818;
 
-    // status joined
+    // status gameinfo
     optional string game_name = 803;
     optional string game_mode = 804;
     optional int32 game_max_players = 805;
     optional int32 game_number_players = 806;
     optional string game_vision = 807;
+    optional sint32 your_player_id = 816;
+
+    // status joined
+
+    // The display name of the joined player
+    optional string joined_player_name = 817;
 
     // status left
     // status spawn
@@ -114,7 +122,10 @@ message Packet {
 
     // status globalmessage
     // A message delivered to all players.
-    optional string message = 814;
+    optional sint32 message_from = 814;
+    optional string message_body = 815;
+
+    // 816 and 817 and 818 are used above.
 
     // 9 - disconnect
     optional int32 disconnect_code = 900;

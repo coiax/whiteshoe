@@ -174,6 +174,11 @@ class GameScene(object):
         self.network = network
 
         self.data = self.namespace.local_data = {}
+        # FIXME self.scores probably shouldn't be stored in this class
+        # if we could swap scenes at any moment and want to resume cleanly
+
+        # Should it go in self.network or self.namespace?
+        self.scores = None
 
     def interact(self):
         curses.wrapper(self._real_interact)
@@ -270,6 +275,9 @@ class GameScene(object):
         for event in self.network.get_events():
             if event[0] in {constants.STATUS_DAMAGED, constants.STATUS_DEATH}:
                 curses.flash()
+            if event[0] == constants.STATUS_SCORES:
+                scores = event[1]
+                self.scores = scores
 
 
         self.viewport.clear()
@@ -378,12 +386,13 @@ class GameScene(object):
             'name' : attr.get('name', 'Unnamed'),
             'hp': attr.get('hp', '?'),
             'hp_max': attr.get('hp_max', '?'),
-            'ammo': attr.get('ammo','?')
+            'ammo': attr.get('ammo','?'),
+            'scores': self.scores
         }
 
         fmt1 = "{name}"
         # TODO draw hp in green/yellow/red depending on health
-        fmt2 = "HP: {hp}({hp_max}) Ammo: {ammo}"
+        fmt2 = "HP: {hp}({hp_max}) Ammo: {ammo} Scores: {scores!r}"
         line1 = fmt1.format(**fmta)
         line2 = fmt2.format(**fmta)
 
@@ -519,6 +528,9 @@ class GameScene(object):
 
             ord('o'): (constants.CMD_FIRE, constants.SMALL_SLIME),
             ord('O'): (constants.CMD_FIRE, constants.BIG_SLIME),
+
+            # TODO <TAB> character brings up nicely formatted game scores
+            # Maybe change scene?
         }
         if c == ord('c'):
             consolescene = ConsoleScene(self.namespace, self.network)
@@ -797,14 +809,19 @@ class ClientNetwork(object):
 
         event = None
 
-        if status == constants.STATUS_JOINED:
+        if status == constants.STATUS_GAMEINFO:
             self.game_id = packet.status_game_id
             self.player_id = packet.your_player_id
             self.vision = packet.game_vision
             event = (status, self.game_id, self.player_id, self.vision)
 
+        elif status == constants.STATUS_JOINED:
+            event = (status, self.player_id, packet.joined_player_name)
+
         elif status == constants.STATUS_LEFT:
-            self.game_id = None
+            if packet.player_id == self.player_id:
+                # You just left the game
+                self.game_id = None
 
         elif status == constants.STATUS_SPAWN:
             pass
@@ -834,6 +851,11 @@ class ClientNetwork(object):
             event = (status, unpause_time, packet.countdown)
         elif status == constants.STATUS_GAMERESUME:
             pass
+
+        elif status == constants.STATUS_SCORES:
+            event = (status, packet.scores)
+        elif status == constants.STATUS_GLOBALMESSAGE:
+            event = (status, packet.message_from, packet.message_body)
 
         if event is None:
             event = (status,)
