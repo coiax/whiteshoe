@@ -458,15 +458,15 @@ class Game(object):
         start_max_hp = 10
         start_ammo = 10
 
-        player = (constants.OBJ_PLAYER,
-                  {'player_id':player_id,
-                   'direction': direction,
-                   'team':player_id,
-                   'hp':start_max_hp,
-                   'hp_max': start_max_hp,
-                   'ammo' : start_ammo})
+        new_player = (constants.OBJ_PLAYER,
+                      {'player_id':player_id,
+                       'direction': direction,
+                       'team':player_id,
+                       'hp':start_max_hp,
+                       'hp_max': start_max_hp,
+                       'ammo' : start_ammo})
 
-        self.world[spawn_coord].append(player)
+        self.world[spawn_coord].append(new_player)
 
         # And now, some mines
         for mine_size in (1,2):
@@ -485,7 +485,7 @@ class Game(object):
             player[1]['ammo'] += 5
             self._mark_dirty_cell(coord)
 
-        return spawn_coord, player
+        return spawn_coord, new_player
 
     def _remove_player(self, player_id):
         location, player = self._find_player(player_id)
