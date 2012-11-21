@@ -1,0 +1,50 @@
+{
+
+
+
+
+
+
+    "creator": "Jack Edge <yellowbounder@gmail.com>", 
+
+
+
+
+
+
+    "reporter": "Jack Edge <yellowbounder@gmail.com>", 
+
+
+
+
+
+
+    "severity": "minor", 
+
+
+
+
+
+
+    "status": "open", 
+
+
+
+
+
+
+    "summary": "Server doesn't send DISCONNECT packets", 
+
+
+
+
+
+
+    "time": "Wed, 21 Nov 2012 20:04:23 +0000"
+
+
+
+
+
+
+}

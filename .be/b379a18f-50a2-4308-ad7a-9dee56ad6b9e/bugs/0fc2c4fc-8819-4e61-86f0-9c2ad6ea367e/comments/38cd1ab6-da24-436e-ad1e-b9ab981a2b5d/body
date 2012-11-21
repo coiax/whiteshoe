@@ -1,0 +1,5 @@
+SIGWINCH (the window resize signal) causes select to crash with a
+select.error exception.
+
+We should catch this signal (not have select crash), and also adjust to our
+new window size.

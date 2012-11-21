@@ -1,0 +1,2 @@
+The presence of an ALWAYS_VISIBLE_OBJECT like OBJ_SLIME causes the server
+to constantly send packets to all clients.
