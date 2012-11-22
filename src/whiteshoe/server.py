@@ -13,6 +13,7 @@ import fractions
 import operator
 import time
 import logging
+import collections
 
 import constants
 import packet_pb2
@@ -33,13 +34,24 @@ def server_main(args=None):
     p.add_argument('-M','--mode',default='ffa')
     p.add_argument('-q','--quiet',action='store_true',default=False)
     p.add_argument('-d','--debug',action='store_true')
+    p.add_argument('-o',dest='options',action='append')
     ns = p.parse_args(args)
-    s = Server(vars(ns))
+
+    options = collections.OrderedDict()
+    for option_string in ns.options:
+        if '=' not in option_string:
+            options[option_string] = None
+        else:
+            parts = option_string.split('=')
+            assert len(parts) == 2
+
+            option[parts[0]] = parts[1]
+
+    s = Server(ns, options)
     s.serve()
 
 class Server(object):
-
-    def __init__(self,options):
+    def __init__(self,ns, options):
         self.handlers = {
             constants.GET_GAMES_LIST: self._get_games_list,
             # games running (s->c)
@@ -57,13 +69,13 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        game_cls = game.modes[options['mode']]
+        game_cls = game.modes[ns.mode]
 
-        g = game_cls(vision=options['vision'], map_generator=options['map'])
+        g = game_cls(vision=ns.vision, map_generator=ns.map, options=options)
         self.games.append(g)
 
-        self.display_stats = not options['quiet']
-        self.debug = options['debug']
+        self.display_stats = not ns.quiet
+        self.debug = ns.debug
 
         self.seen_ids = []
 
@@ -82,6 +94,8 @@ class Server(object):
                       'packets_recieved':0,
                       'bytes_sent':0,
                       'bytes_recieved':0}
+
+        self.options = options
 
 
     def serve(self):

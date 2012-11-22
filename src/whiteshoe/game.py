@@ -20,7 +20,10 @@ class BaseGame(object):
     mode = 'base'
 
     def __init__(self,max_players=20,map_generator='purerandom',
-                 name='Untitled',id=None,vision='basic'):
+                 name='Untitled',id=None,vision='basic',options=None):
+        if options is None:
+            options = dict()
+        self.options = options
 
         self.random = random.Random(0)
 
@@ -540,6 +543,10 @@ class BaseGame(object):
     def _flush_dirty(self):
         packets = []
 
+        if not self._dirty_players and not self._dirty_coords:
+            # If nothing is marked dirty, then nothing has changed.
+            return packets
+
         # Return a number of packet tuples, in the form
         # (player_id, packet) generally vision packets, informing the player
         # of what has changed.
@@ -560,7 +567,9 @@ class BaseGame(object):
 
             changed = ()
 
-            if player_id in self._dirty_players:
+            always_dirty = 'AlwaysDirtyPlayers' in self.options
+
+            if always_dirty or player_id in self._dirty_players:
                 # yes, for now, if a player is marked dirty, then we
                 # just send his whole known world
                 changed = self._update_known_world(player_id, visible, visible)
