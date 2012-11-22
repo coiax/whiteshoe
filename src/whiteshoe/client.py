@@ -11,6 +11,7 @@ import code
 import random
 import logging
 import threading
+import collections
 
 import constants
 import packet_pb2
@@ -26,9 +27,21 @@ def client_main(args=None):
     p.add_argument('-n','--name')
     p.add_argument('-t','--team',type=int)
     p.add_argument('--socket-type',default='tcp')
+    p.add_argument('-o',dest='option_strings',action='append',default=())
 
     ns = p.parse_args(args)
-    print(ns)
+
+    options = collections.OrderedDict()
+    for option_str in ns.option_strings:
+        if '=' in option:
+            parts = option.split('=')
+            assert len(parts) == 2
+            options[part[0]] = part[1]
+        else:
+            options[option_str] = None
+
+    del ns.option_strings
+    ns.options = options
 
     #logging.basicConfig(filename='client.log',level=logging.DEBUG)
     network = ClientNetwork(ns.socket_type)
@@ -167,6 +180,52 @@ class ConsoleScene(object):
     def shutdown(self):
         pass
 
+class ScoreScene(object):
+    def __init__(self, namespace, network):
+        self.namespace = namespace
+        self.network = network
+
+    def interact(self):
+        curses.wrapper(self._real_interact)
+
+    def _real_interact(self, stdscr):
+        curses_setup(stdscr)
+
+        # FIXME since scores comes from namespace, it doesn't update if
+        # network gets new information. This should be fixed, probably
+        # by scores being stored in the network object?
+
+        if 'scores' in self.namespace:
+            stdscr.clear()
+
+            scores = self.namespace.scores
+
+            y = 0
+            stdscr.addstr(y, 0, "Scores")
+            y += 1
+
+            for player_id, score in utility.grouper(2, scores):
+                stdscr.addstr(y, 0, "{} : {}".format(player_id, score))
+                y += 1
+
+            while True:
+                self.network.update()
+
+                # non-blocking
+                c = stdscr.getch()
+                if c != curses.ERR:
+                    # Any key quits ScoreScene
+                    break
+
+        scene = GameScene(self.namespace, self.network)
+        raise NewScene(scene)
+
+    def cleanup(self):
+        pass
+
+    def shutdown(self):
+        pass
+
 
 class GameScene(object):
     def __init__(self, namespace, network):
@@ -174,11 +233,6 @@ class GameScene(object):
         self.network = network
 
         self.data = self.namespace.local_data = {}
-        # FIXME self.scores probably shouldn't be stored in this class
-        # if we could swap scenes at any moment and want to resume cleanly
-
-        # Should it go in self.network or self.namespace?
-        self.scores = None
 
     def interact(self):
         curses.wrapper(self._real_interact)
@@ -277,7 +331,7 @@ class GameScene(object):
                 curses.flash()
             if event[0] == constants.STATUS_SCORES:
                 scores = event[1]
-                self.scores = scores
+                self.namespace.scores = scores
 
 
         self.viewport.clear()
@@ -387,7 +441,7 @@ class GameScene(object):
             'hp': attr.get('hp', '?'),
             'hp_max': attr.get('hp_max', '?'),
             'ammo': attr.get('ammo','?'),
-            'scores': self.scores
+            'scores': self.namespace.scores
         }
 
         fmt1 = "{name}"
@@ -528,13 +582,13 @@ class GameScene(object):
 
             ord('o'): (constants.CMD_FIRE, constants.SMALL_SLIME),
             ord('O'): (constants.CMD_FIRE, constants.BIG_SLIME),
-
-            # TODO <TAB> character brings up nicely formatted game scores
-            # Maybe change scene?
         }
         if c == ord('c'):
             consolescene = ConsoleScene(self.namespace, self.network)
             raise NewScene(consolescene)
+        elif c == 9:
+            # <TAB> character
+            raise NewScene(ScoreScene(self.namespace, self.network))
 
         elif c in cmds:
             cmd = cmds[c]

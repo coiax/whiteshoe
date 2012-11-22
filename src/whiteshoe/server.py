@@ -34,7 +34,7 @@ def server_main(args=None):
     p.add_argument('-M','--mode',default='ffa')
     p.add_argument('-q','--quiet',action='store_true',default=False)
     p.add_argument('-d','--debug',action='store_true')
-    p.add_argument('-o',dest='options',action='append')
+    p.add_argument('-o',dest='options',action='append',default=[])
     ns = p.parse_args(args)
 
     options = collections.OrderedDict()
@@ -238,11 +238,22 @@ class Server(object):
     def _send_packets(self, packets):
         for network_id, packet in packets:
             data = packet.SerializeToString()
+
+            if network_id not in self.network_id_bidict:
+                continue
+
             type_, other = self.network_id_bidict[network_id]
 
             if type_ == 'TCP':
                 conn = other
-                conn.sendall(utility.stream_wrap(data))
+                try:
+                    conn.sendall(utility.stream_wrap(data))
+                except socket.error:
+                    # TCP sockets are prone to randomly freaking out,
+                    # occasionally.
+                    self._disconnect_client(network_id,reason=None)
+                    continue
+
             elif type_ == 'UDP':
                 addr = other
                 self.udp_socket.sendto(data, addr)
