@@ -30,6 +30,7 @@ def server_main(args=None):
     p = argparse.ArgumentParser()
     p.add_argument('-v','--vision',default='cone')
     p.add_argument('-m','--map',default='depth_first')
+    p.add_argument('-M','--mode',default='ffa')
     p.add_argument('-q','--quiet',action='store_true',default=False)
     p.add_argument('-d','--debug',action='store_true')
     ns = p.parse_args(args)
@@ -56,7 +57,7 @@ class Server(object):
         self.games = []
 
         # Debug starting game
-        game_cls = game.modes['ffa']
+        game_cls = game.modes[options['mode']]
 
         g = game_cls(vision=options['vision'], map_generator=options['map'])
         self.games.append(g)

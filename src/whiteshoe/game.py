@@ -142,7 +142,7 @@ class BaseGame(object):
 
         self.players.append(player_id)
         self.known_worlds[player_id] = {}
-        self.player_attr = {}
+        self.player_attr[player_id] = {}
 
         location, player = self._spawn_player(player_id)
 
@@ -258,7 +258,9 @@ class BaseGame(object):
         packets.extend(self._flush_dirty())
         return packets
 
-    def _determine_can_see(self, coord, direction):
+    def _determine_can_see(self, coord, player):
+        direction = player[1]['direction']
+
         vision_func = self.VISION_FUNCTIONS[self.vision]
 
         coords = vision_func(self.world, coord, direction)
@@ -551,7 +553,7 @@ class BaseGame(object):
 
             direction = playerobj[1]['direction']
 
-            visible = self._determine_can_see(location, direction)
+            visible = self._determine_can_see(location, playerobj)
             # So we have the list of coordinates that are in direct vision
 
             dirty = self._dirty_coords
@@ -982,6 +984,28 @@ class FreeForAllGame(BaseGame):
             self._mark_dirty_cell(coord)
 
         return coord, new_player
+
+@gamemode
+class TeamGame(BaseGame):
+    mode = "teambase"
+    def _determine_can_see(self, coord, player):
+        can_see_func = super(TeamGame, self)._determine_can_see
+
+        coords = can_see_func(coord, player)
+
+        team = player[1]['team']
+
+        # In a team game, you share vision with your teammates
+        for player_id in self.players:
+            if player_id == player[1]['player_id']:
+                continue
+            try:
+                location, other_player = self._find_player(player_id)
+            except PlayerNotFound:
+                continue
+            else:
+                coords |= can_see_func(location, other_player)
+        return coords
 
 class GameException(Exception):
     pass
