@@ -150,13 +150,13 @@ class BaseGame(object):
         location, player = self._spawn_player(player_id)
 
         attr = player[1]
-        if name is not None:
-            attr['name'] = name
-        if team is not None:
-            attr['team'] = team
+        if name is None or not name:
+            name = "Unnamed"
+        if team is None:
+            team = 0
 
-        self.player_attr[player_id]['name'] = name
-        self.player_attr[player_id]['team'] = team
+        self.player_attr[player_id]['name'] = attr['name'] = name
+        self.player_attr[player_id]['team'] = attr['team'] = team
 
         join_packet = packet_pb2.Packet()
         join_packet.packet_id = utility.get_id('packet')
@@ -175,8 +175,38 @@ class BaseGame(object):
 
         packets = [(player_id, join_packet)]
 
-        # TODO inform the joined player of other players in the game
+        # Inform the joined player of other players in the game
         # through use of JOINED events set historical
+        for other_id in self.players:
+            new_packets = []
+            for i in range(2):
+                p = packet_pb2.Packet()
+                p.packet_id = utility.get_id('packet')
+                p.payload_types.append(constants.GAME_STATUS)
+                p.status_game_id = self.id
+                p.status = constants.STATUS_JOINED
+                new_packets.append(p)
+
+            p1, p2 = new_packets
+            # This event is ABOUT the joined player
+            # and sent to the other
+            p1.player_id = player_id
+            p1.joined_player_name = self.player_attr[player_id]['name']
+
+            packets.append((other_id, p1))
+
+            # Since there's no point informing the joined player about himself
+            # twice, continue at this point.
+            if other_id == player_id:
+                continue
+
+            # This event is about the other player,
+            # and sent to the joined player
+            p2.player_id = other_id
+            p2.joined_player_name = self.player_attr[other_id]['name']
+            p2.historical = True
+
+            packets.append((player_id, p2))
 
         self._update_scores = True
 

@@ -12,6 +12,7 @@ import random
 import logging
 import threading
 import collections
+import operator
 
 import constants
 import packet_pb2
@@ -27,14 +28,14 @@ def client_main(args=None):
     p.add_argument('-n','--name')
     p.add_argument('-t','--team',type=int)
     p.add_argument('--socket-type',default='tcp')
-    p.add_argument('-o',dest='option_strings',action='append',default=())
+    p.add_argument('-o',dest='option_strings',action='append',default=[])
 
     ns = p.parse_args(args)
 
     options = collections.OrderedDict()
     for option_str in ns.option_strings:
-        if '=' in option:
-            parts = option.split('=')
+        if '=' in option_str:
+            parts = option_str.split('=')
             assert len(parts) == 2
             options[part[0]] = part[1]
         else:
@@ -204,8 +205,13 @@ class ScoreScene(object):
             stdscr.addstr(y, 0, "Scores")
             y += 1
 
-            for player_id, score in utility.grouper(2, scores):
-                stdscr.addstr(y, 0, "{} : {}".format(player_id, score))
+            grouped_scores = list(utility.grouper(2, scores))
+            grouped_scores.sort(key=operator.itemgetter(1),reversed=True)
+
+            for player_id, score in grouped_scores:
+                name = self.network.players[player_id]
+
+                stdscr.addstr(y, 0, "{} : {}".format(name, score))
                 y += 1
 
             while True:
@@ -233,6 +239,7 @@ class GameScene(object):
         self.network = network
 
         self.data = self.namespace.local_data = {}
+        self.unused_events = self.namespace.unused_events = []
 
     def interact(self):
         curses.wrapper(self._real_interact)
@@ -329,9 +336,11 @@ class GameScene(object):
         for event in self.network.get_events():
             if event[0] in {constants.STATUS_DAMAGED, constants.STATUS_DEATH}:
                 curses.flash()
-            if event[0] == constants.STATUS_SCORES:
+            elif event[0] == constants.STATUS_SCORES:
                 scores = event[1]
                 self.namespace.scores = scores
+            else:
+                self.unused_events.append(event)
 
 
         self.viewport.clear()
@@ -441,12 +450,14 @@ class GameScene(object):
             'hp': attr.get('hp', '?'),
             'hp_max': attr.get('hp_max', '?'),
             'ammo': attr.get('ammo','?'),
-            'scores': self.namespace.scores
+            'player_id': attr.get('player_id','?')
         }
 
         fmt1 = "{name}"
+        if 'ShowPlayerID' in self.namespace.options:
+            fmt1 += ' player_id: {player_id}'
         # TODO draw hp in green/yellow/red depending on health
-        fmt2 = "HP: {hp}({hp_max}) Ammo: {ammo} Scores: {scores!r}"
+        fmt2 = "HP: {hp}({hp_max}) Ammo: {ammo}"
         line1 = fmt1.format(**fmta)
         line2 = fmt2.format(**fmta)
 
@@ -621,6 +632,8 @@ class ClientNetwork(object):
         self.game_id = None
         self.player_id = None
         self.vision = None
+
+        self.players = {}
 
         self.events = []
 
@@ -870,7 +883,9 @@ class ClientNetwork(object):
             event = (status, self.game_id, self.player_id, self.vision)
 
         elif status == constants.STATUS_JOINED:
-            event = (status, self.player_id, packet.joined_player_name)
+            event = (status, packet.status_game_id, packet.player_id,
+                     packet.joined_player_name)
+            self.players[packet.player_id] = packet.joined_player_name
 
         elif status == constants.STATUS_LEFT:
             if packet.player_id == self.player_id:
