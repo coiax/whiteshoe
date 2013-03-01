@@ -1,1 +1,7 @@
-bluh bluh
+Requirements
+============
+
+* protobuf
+
+Run the make in the whiteshoe directory to build the python protobuf
+interpreter.
