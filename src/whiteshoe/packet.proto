@@ -115,11 +115,6 @@ message Packet {
     // status gameresume
     // (The game has been resumed, inputs are now accepted.)
 
-    // status scores
-    // Scores will vary from game type to game type, but generally
-    // are (player_id, score) in a single list
-    repeated sint64 scores = 813 [packed=true];
-
     // status globalmessage
     // A message delivered to all players.
     optional sint32 message_from = 814;
@@ -129,5 +124,10 @@ message Packet {
 
     // 9 - disconnect
     optional int32 disconnect_code = 900;
+
+    // 10 - keyvalue (s<->c)
+    // Arbitary key->values, packed with each key followed by a value
+    optional int32 keyvalue_game_id = 1000;
+    repeated string keyvalues = 1001;
 
 }
