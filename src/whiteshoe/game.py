@@ -69,6 +69,31 @@ class BaseGame(object):
 
     vision = property(get_vision, set_vision)
 
+    def handle(self, packet, player_id):
+        # Entry point for income game specific packets.
+        # Returns a list of 0 or more packets in response
+
+        if player_id not in self.players:
+            p = packet_pb2.Packet()
+            p.packet_id = get_id('packet')
+            p.payload_type = constants.ERROR
+            p.error_type = constants.ERROR_NOT_IN_GAME
+            return [p]
+
+        elif packet.payload_type == constants.GAME_ACTION:
+            action, argument = packet.action, packet.argument
+
+            return self.player_action(player_id, action, argument)
+        elif packet.payload_type == constants.GAME_MESSAGE:
+            #TODO implement game message
+            return []
+        elif packet.payload_type == constants.KEYVALUE:
+            #TODO implement game response to client keyvalues
+            return []
+        else:
+            msg = "Unknown payload: {}".format(packet.payload_type)
+            raise GameException(msg)
+
     def _spawn_player(self, player_id):
         try:
             location, player_obj = self._find_player(player_id)
@@ -160,9 +185,9 @@ class BaseGame(object):
 
         join_packet = packet_pb2.Packet()
         join_packet.packet_id = utility.get_id('packet')
-        join_packet.payload_types.append(constants.GAME_STATUS)
+        join_packet.payload_type = constants.GAME_STATUS
 
-        join_packet.status_game_id = self.id
+        join_packet.game_id = self.id
         join_packet.status = constants.STATUS_GAMEINFO
         join_packet.your_player_id = player_id
         join_packet.game_name = self.name
@@ -182,8 +207,8 @@ class BaseGame(object):
             for i in range(2):
                 p = packet_pb2.Packet()
                 p.packet_id = utility.get_id('packet')
-                p.payload_types.append(constants.GAME_STATUS)
-                p.status_game_id = self.id
+                p.payload_type = constants.GAME_STATUS
+                p.game_id = self.id
                 p.status = constants.STATUS_JOINED
                 new_packets.append(p)
 
@@ -313,8 +338,8 @@ class BaseGame(object):
         def gen_packet():
             packet = packet_pb2.Packet()
             packet.packet_id = utility.get_id('packet')
-            packet.payload_types.append(constants.VISION_UPDATE)
-            packet.vision_game_id = self.id
+            packet.payload_type = constants.VISION_UPDATE
+            packet.game_id = self.id
             return packet
 
         current_packet = gen_packet()
@@ -627,8 +652,8 @@ class BaseGame(object):
             if p is None:
                 p = packet_pb2.Packet()
                 p.packet_id = utility.get_id('packet')
-                p.payload_types.append(constants.GAME_STATUS)
-                p.status_game_id = self.id
+                p.payload_type = constants.GAME_STATUS
+                p.game_id = self.id
 
             if event[1] in {constants.STATUS_DAMAGED, constants.STATUS_DEATH}:
                 p.status = event[1]
@@ -639,19 +664,20 @@ class BaseGame(object):
                 packets.append((player_id, p))
                 p = None
 
-        if self._update_scores:
-            self._update_scores = False
-            p = packet_pb2.Packet()
-            p.packet_id = utility.get_id('packet')
-            p.payload_types.append(constants.GAME_STATUS)
-            p.status_game_id = self.id
-
-            p.status = constants.STATUS_SCORES
-            for player_id in sorted(self.scores):
-                p.scores.append(player_id)
-                p.scores.append(self.scores[player_id])
-            for player_id in self.players:
-                packets.append((player_id,p))
+# TODO actually update scores with keyvalues, not this muck
+#        if self._update_scores:
+#            self._update_scores = False
+#            p = packet_pb2.Packet()
+#            p.packet_id = utility.get_id('packet')
+#            p.payload_type = constants.GAME_STATUS
+#            p.game_id = self.id
+#
+#            p.status = constants.STATUS_SCORES
+#            for player_id in sorted(self.scores):
+#                p.scores.append(player_id)
+#                p.scores.append(self.scores[player_id])
+#            for player_id in self.players:
+#                packets.append((player_id,p))
 
         return packets
 

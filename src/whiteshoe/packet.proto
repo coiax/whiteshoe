@@ -97,8 +97,21 @@ message Packet {
     // objects consists of 4-tuples: x,y,obj_type,attr_id
     // attr_id is either -1 for no attributes, or an index of an attribute
     // from the following list of attributes.
+    message Attribute {
+        optional int32 player_id = 1;
+        optional int32 direction = 2;
+        optional int32 team = 3;
+        optional int32 hp_max = 4;
+        optional int32 hp = 5;
+        optional int32 max_ammo = 6;
+        optional int32 ammo = 7;
+        optional int32 owner = 8;
+        optional int32 size = 9;
+        optional bool historical = 10;
+        optional string name = 11;
+    }
 
-    repeated bytes attributes = 602;
+    repeated Attribute attributes = 602;
     optional bool clear_all = 603;
 
 

@@ -52,18 +52,6 @@ def server_main(args=None):
 
 class Server(object):
     def __init__(self,ns, options):
-        self.handlers = {
-            constants.GET_GAMES_LIST: self._get_games_list,
-            # games running (s->c)
-            constants.MAKE_NEW_GAME: self._make_new_game,
-            constants.ERROR: self._error,
-            constants.GAME_ACTION: self._game_action,
-            constants.JOIN_GAME: self._join_game,
-            # vision update (s->c)
-            constants.KEEP_ALIVE: self._keep_alive,
-            constants.DISCONNECT: self._disconnect_packet,
-
-        }
         self.port = constants.DEFAULT_PORT
 
         self.games = []
@@ -120,7 +108,7 @@ class Server(object):
                     elif last_sent.elapsed_seconds > constants.KEEPALIVE_TIME:
                         p = packet_pb2.Packet()
                         p.packet_id = get_id('packet')
-                        p.payload_types.append(constants.KEEP_ALIVE)
+                        p.payload_type = constants.KEEP_ALIVE
                         p.timestamp = int(time.time())
 
                         self._send_packets([(network_id, p)])
@@ -162,8 +150,7 @@ class Server(object):
                         self.stats['packets_recieved'] += 1
                         self.stats['bytes_recieved'] += len(data)
 
-                        for payload_type in packet.payload_types:
-                            self.handlers[payload_type](packet, network_id)
+                        self.handle(packet, network_id)
 
                     elif rs == self.tcp_socket:
                         conn, address = self.tcp_socket.accept()
@@ -208,9 +195,8 @@ class Server(object):
 
                             for chunk in chunks:
                                 packet = packet_pb2.Packet.FromString(chunk)
-                                for payload_type in packet.payload_types:
-                                    handler = self.handlers[payload_type]
-                                    handler(packet, network_id)
+
+                                self.handle(packet, network_id)
 
                                 self.stats['packets_recieved'] += 1
                                 self.stats['bytes_recieved'] += len(chunk)
@@ -262,9 +248,45 @@ class Server(object):
             self.stats['packets_sent'] += 1
             self.stats['bytes_sent'] += len(data)
 
+
+    def handle(self, packet, network_id):
+        # Entry point for new packets that arrive.
+
+        # Negative payload type is handled by the server class,
+        # a positive payload type is handled by the game class.
+
+        if packet.payload_type > 0:
+            found_game = False
+
+            for game in self.games:
+                if game.id == packet.game_id:
+                    packets = game.handle(packet, network_id)
+                    found_game = True
+                    break
+
+            assert found_game
+            self._send_packets(packets)
+
+        elif packet.payload_type == constants.GET_GAMES_LIST:
+            self._get_games_list(packet, network_id)
+        elif packet.payload_type == constants.MAKE_NEW_GAME:
+            self._make_new_game(packet, network_id)
+        elif packet.payload_type == constants.ERROR:
+            self._error(packet, network_id)
+        elif packet.payload_type == constants.JOIN_GAME:
+            self._join_game(packet, network_id)
+        elif packet.payload_type == constants.KEEP_ALIVE:
+            self._keep_alive(packet, network_id)
+        elif packet.payload_type == constants.DISCONNECT:
+            self._disconnect_packet(packet, network_id)
+        else:
+            raise ServerException("Unrecognised payload: {}".format(
+                packet.payload_type))
+
+
     def _get_games_list(self, packet, network_id):
         reply = packet_pb2.Packet()
-        reply.payload_types.append(constants.GAMES_RUNNING)
+        reply.payload_type = constants.GAMES_LIST
 
         reply.packet_id = get_id('packet')
 
@@ -312,25 +334,6 @@ class Server(object):
         # Handle silently.
         pass
 
-    def _game_action(self, packet, network_id):
-        player_id = network_id
-        game_id = packet.action_game_id
-
-        game = [g for g in self.games if g.id == game_id][0]
-
-        if player_id not in game.players:
-            p = packet_pb2.Packet()
-            p.packet_id = get_id('packet')
-            p.payload_types.append(constants.ERROR)
-            p.error_type = constants.ERROR_NOT_IN_GAME
-            self._send_packets(((player_id, p),))
-        else:
-            action = packet.action
-            arguments = packet.argument
-
-            packets = game.player_action(player_id, action, arguments)
-            self._send_packets(packets)
-
     def _keep_alive(self, packet, network_id):
         pass
 
@@ -351,7 +354,7 @@ class Server(object):
         if reason is not None:
             p = packet_pb2.Packet()
             p.packet_id = get_id('packet')
-            p.payload_types.append(constants.DISCONNECT)
+            p.payload_type = constants.DISCONNECT
             p.disconnect_code = reason
             self._send_packets(((network_id, p),))
 

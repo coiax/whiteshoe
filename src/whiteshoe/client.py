@@ -336,9 +336,6 @@ class GameScene(object):
         for event in self.network.get_events():
             if event[0] in {constants.STATUS_DAMAGED, constants.STATUS_DEATH}:
                 curses.flash()
-            elif event[0] == constants.STATUS_SCORES:
-                scores = event[1]
-                self.namespace.scores = scores
             else:
                 self.unused_events.append(event)
 
@@ -613,7 +610,7 @@ class ClientNetwork(object):
     def __init__(self,socket_type='tcp'):
         self.handlers = {
             # c->s get games list
-            constants.GAMES_RUNNING: self._games_running,
+            constants.GAMES_LIST: self._games_running,
             # c->s make new game
             constants.ERROR: self._error,
             # c->s action
@@ -678,7 +675,7 @@ class ClientNetwork(object):
 
         p = packet_pb2.Packet()
         p.packet_id = get_id('packet')
-        p.payload_types.append(constants.JOIN_GAME)
+        p.payload_type = constants.JOIN_GAME
         if autojoin:
             p.autojoin = True
         else:
@@ -710,7 +707,7 @@ class ClientNetwork(object):
         if self.socket is not None:
             p = packet_pb2.Packet()
             p.packet_id = get_id('packet')
-            p.payload_types.append(constants.DISCONNECT)
+            p.payload_type = constants.DISCONNECT
             p.disconnect_code = reason
 
             self._send_packets((p,))
@@ -735,8 +732,7 @@ class ClientNetwork(object):
                 for chunk in chunks:
                     packet = packet_pb2.Packet.FromString(chunk)
 
-                    for payload_type in packet.payload_types:
-                        self.handlers[payload_type](packet)
+                    self.handlers[packet.payload_type](packet)
 
             except Exception as e:
                 #traceback.print_exc()
@@ -746,7 +742,7 @@ class ClientNetwork(object):
     def _send_keepalive(self):
         p = packet_pb2.Packet()
         p.packet_id = get_id('packet')
-        p.payload_types.append(constants.KEEP_ALIVE)
+        p.payload_type = constants.KEEP_ALIVE
         p.timestamp = int(time.time())
 
         self._send_packets([p])
@@ -772,9 +768,9 @@ class ClientNetwork(object):
 
         p = packet_pb2.Packet()
         p.packet_id = get_id('packet')
-        p.payload_types.append(constants.GAME_ACTION)
+        p.payload_type = constants.GAME_ACTION
         # Ah, we need to note the game_id that we're participating in
-        p.action_game_id = self.game_id
+        p.game_id = self.game_id
         p.action = cmd_num
         p.argument = arg_num
 
@@ -877,13 +873,13 @@ class ClientNetwork(object):
         event = None
 
         if status == constants.STATUS_GAMEINFO:
-            self.game_id = packet.status_game_id
+            self.game_id = packet.game_id
             self.player_id = packet.your_player_id
             self.vision = packet.game_vision
             event = (status, self.game_id, self.player_id, self.vision)
 
         elif status == constants.STATUS_JOINED:
-            event = (status, packet.status_game_id, packet.player_id,
+            event = (status, packet.game_id, packet.player_id,
                      packet.joined_player_name)
             self.players[packet.player_id] = packet.joined_player_name
 
@@ -921,8 +917,6 @@ class ClientNetwork(object):
         elif status == constants.STATUS_GAMERESUME:
             pass
 
-        elif status == constants.STATUS_SCORES:
-            event = (status, packet.scores)
         elif status == constants.STATUS_GLOBALMESSAGE:
             event = (status, packet.message_from, packet.message_body)
 
