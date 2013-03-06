@@ -155,11 +155,11 @@ class bidict(collections.MutableMapping):
     def __contains__(self, key):
         return key in self._items
 
-def grouper(n, iterable, fillvalue=None, izip_longest_=itertools.izip_longest):
+def grouper(n, iterable, fillvalue=None):
     "Collect data into fixed-length chunks or blocks"
     # grouper(3, 'ABCDEFG', 'x') --> ABC DEF Gxx
     args = [iter(iterable)] * n
-    return izip_longest_(fillvalue=fillvalue, *args)
+    return itertools.izip_longest(fillvalue=fillvalue, *args)
 
 def neighbourhood(coord,n=1):
     coords = []
