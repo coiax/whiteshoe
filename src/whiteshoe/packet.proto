@@ -1,13 +1,41 @@
 message Packet {
-    // to catch duplicates
-    required fixed32 packet_id = 1;
-    repeated int32 payload_types = 2 [packed=true];
-    // payload type can be any of the following
-    // and a packet can contain multiple payloads, although not all of them
-    // make sense together
-    // 0 - c->s get games list
+    // If transmitting over a possibly lossy connection, such as via UDP
+    // packets, a packet_id can be included to check for duplication.
+    // This packet_id can be any 32bit number, the core implementation
+    // uses an increasing number, but this isn't guaranteed.
+    optional fixed32 packet_id = 1;
 
-    // 1 - s->c games running
+    // Single payload per packet, no longer multiple payloads
+    // Each packet has a "payload type" declaring the type of the packets.
+
+    // The negative payload types are reserved for special non-game
+    // packets, like server greetings, game solicitation, and so on.
+
+    // A negative payload_type NEVER has a game_id, as the presence of a
+    // game_id means the packet is immediately passed down by the server
+    // to the Game for processing.
+
+    // A positive payload_type ALWAYS has a game_id, as the packet is
+    // game_specific.
+
+    required sint32 payload_type = 2;
+    optional int32 game_id = 3;
+
+    // A quick summary of payload_type numbers.
+
+    // Non-Game Packets
+    // ================
+    // -1 get games list (c->s)
+    // -2 games list (s->c)
+    // -3 make new game (c->s)
+    // -4 error (c<->s)
+    // -5 join game (c->s)
+    // -6 keep alive (c<->s)
+    // -7 disconnect (c<->s)
+
+    // -1 - c->s get games list
+
+    // -2 - s->c games running
     message Game {
         required int32 game_id = 1;
         optional string name = 2;
@@ -17,7 +45,7 @@ message Packet {
     }
     repeated Game games = 100;
 
-    // 2 - c->s make new game
+    // -3 - c->s make new game
     // New game creation options
     optional int32 max_players = 201;
     optional string map_generator = 202;
@@ -25,16 +53,11 @@ message Packet {
     optional string new_game_mode = 204;
     optional bool join_new_game = 205;
 
-    // 3 - c<->s error
+    // -4 - c<->s error
     optional int32 error_type = 300;
     optional string error_message = 301;
 
-    // 4 c->s game action
-    optional int32 action_game_id = 400;
-    optional int32 action = 401;
-    optional int32 argument = 402;
-
-    // 5 c->s join game
+    // -5 c->s join game
     // If true, just attempt to join any game
     optional bool autojoin = 500;
     // if false, join this game_id
@@ -44,32 +67,42 @@ message Packet {
     // 0 is not a valid player_team number
     optional sint32 player_team = 503;
 
-    // 6 - vision update
-    optional int32 vision_game_id = 600;
-    repeated sint32 objects = 601 [packed=true];
-    // objects consists of 4-tuples: x,y,obj_type,attr_id
-    // attr_id is either -1 for no attributes, or an index of an attribute
-    message Attribute {
-        optional int32 player_id = 1;
-        optional int32 direction = 2;
-        optional int32 team = 3;
-        optional int32 hp_max = 4;
-        optional int32 hp = 5;
-        optional int32 max_ammo = 6;
-        optional int32 ammo = 7;
-        optional int32 owner = 8;
-        optional int32 size = 9;
-        optional bool historical = 10;
-        optional string name = 11;
-    }
-    repeated Attribute attributes = 602;
-    optional bool clear_all = 603;
-
-    // 7 - keep alive
+    // -6 - keep alive c<->s
     optional sint64 timestamp = 700;
 
-    // 8 - game status
-    optional int32 status_game_id = 800;
+    // -7 - disconnect c<->s
+    // You have been disconnected. Can be sent from client or server.
+
+    // This packet exists for connections over UDP, and SHOULD be
+    // sent over a TCP connection as well before it is closed.
+    optional int32 disconnect_code = 900;
+
+    // ======================
+    // Game Specific Payloads
+    // ======================
+    //
+    // 1 c->s game action
+    // 2 s->c vision update
+    // 3 s->c game status
+    // 4 s<->c game message
+    // 5 s<->c keyvalue
+
+    // 1 c->s game action
+    optional int32 action = 401;
+    optional int32 argument = 402;
+
+    // 2 - vision update
+    repeated sint32 objects = 601 [packed=true];
+
+    // objects consists of 4-tuples: x,y,obj_type,attr_id
+    // attr_id is either -1 for no attributes, or an index of an attribute
+    // from the following list of attributes.
+
+    repeated bytes attributes = 602;
+    optional bool clear_all = 603;
+
+
+    // 3 - game status
     optional int32 status = 801;
 
     // general
@@ -115,19 +148,22 @@ message Packet {
     // status gameresume
     // (The game has been resumed, inputs are now accepted.)
 
-    // status globalmessage
-    // A message delivered to all players.
+    // --------------------
+    // end of game statuses
+    // --------------------
+
+    // 4 - game_message
+    // A message. When sent from server to client, the from field shows
+    // who is speaking. When the client is sending a message to the server,
+    // the from field is ommitted, as it is obvious.
     optional sint32 message_from = 814;
     optional string message_body = 815;
+    // Channel can be private, the name of a chat channel, or global.
+    optional string channel = 819;
 
-    // 816 and 817 and 818 are used above.
 
-    // 9 - disconnect
-    optional int32 disconnect_code = 900;
-
-    // 10 - keyvalue (s<->c)
+    // 5 - keyvalue (s<->c)
     // Arbitary key->values, packed with each key followed by a value
-    optional int32 keyvalue_game_id = 1000;
     repeated string keyvalues = 1001;
 
 }
