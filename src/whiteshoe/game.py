@@ -692,7 +692,6 @@ class BaseGame(object):
             p.keyvalues.append(scores_with_names_text)
 
             for player_id in self.players:
-                # Determine the name of the player
                 packets.append((player_id, p))
 
         return packets
