@@ -1,5 +1,6 @@
 import random
 import collections
+import json
 
 import utility
 import constants
@@ -233,6 +234,8 @@ class BaseGame(object):
 
             packets.append((player_id, p2))
 
+        # There is a new entry on the score table, so set the update_scores
+        # flag.
         self._update_scores = True
 
         packets.extend(self._event_check())
@@ -664,20 +667,21 @@ class BaseGame(object):
                 packets.append((player_id, p))
                 p = None
 
-# TODO actually update scores with keyvalues, not this muck
-#        if self._update_scores:
-#            self._update_scores = False
-#            p = packet_pb2.Packet()
-#            p.packet_id = utility.get_id('packet')
-#            p.payload_type = constants.GAME_STATUS
-#            p.game_id = self.id
-#
-#            p.status = constants.STATUS_SCORES
-#            for player_id in sorted(self.scores):
-#                p.scores.append(player_id)
-#                p.scores.append(self.scores[player_id])
-#            for player_id in self.players:
-#                packets.append((player_id,p))
+        if self._update_scores:
+            # clear the update scores flag
+            self._update_scores = False
+
+            p = packet_pb2.Packet()
+            p.packet_id = utility.get_id('packet')
+            p.game_id = self.id
+            p.payload_type = constants.KEYVALUE
+
+            p.keyvalues.append(constants.KEYVALUE_SCORES)
+            scores_text = json.dumps(dict(self.scores))
+            p.keyvalues.append(scores_text)
+
+            for player_id in self.players:
+                packets.append((player_id, p))
 
         return packets
 

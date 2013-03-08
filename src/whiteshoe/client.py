@@ -618,6 +618,7 @@ class ClientNetwork(object):
             constants.KEEP_ALIVE: self._keep_alive,
             constants.GAME_STATUS: self._game_status,
             constants.DISCONNECT: self._disconnect,
+            constants.KEYVALUE: self._keyvalue,
         }
 
         self.socket = None
@@ -639,6 +640,8 @@ class ClientNetwork(object):
 
         self._cached_player = None
         self._buffer = ''
+
+        self.keyvalues = {}
 
     def connect(self, addr):
         family = socket.AF_INET6
@@ -937,6 +940,9 @@ class ClientNetwork(object):
         # FIXME later we won't raise this, maybe possibly change scenes?
         raise ServerDisconnect
 
+    def _keyvalue(self, packet):
+        for key, value in utility.grouper(2, packet.keyvalues):
+            self.keyvalues[key] = value
 
 class ClientException(Exception):
     pass

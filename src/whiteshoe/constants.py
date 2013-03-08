@@ -117,6 +117,8 @@ class Constants(object):
     STATUS_GAMEPAUSE = 8
     STATUS_GAMERESUME = 9
 
+    KEYVALUE_SCORES = "scores"
+
     DIRECTIONS = (UP, RIGHT, DOWN, LEFT)
 
     DIFFS = {
