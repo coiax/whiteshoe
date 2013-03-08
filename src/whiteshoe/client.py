@@ -13,6 +13,7 @@ import logging
 import threading
 import collections
 import operator
+import json
 
 import constants
 import packet_pb2
@@ -442,19 +443,35 @@ class GameScene(object):
         except PlayerNotFound:
             attr = {}
 
+        # Attempt to determine our score.
+        scores_json = self.network.keyvalues.get(constants.KEYVALUE_SCORES)
+        scores = json.loads(scores_json) if scores_json else {}
+
+        # Cooerce string json keys to numeric keys
+        for key in list(scores):
+            scores[int(key)] = scores[key]
+
         fmta = {
             'name' : attr.get('name', 'Unnamed'),
             'hp': attr.get('hp', '?'),
             'hp_max': attr.get('hp_max', '?'),
             'ammo': attr.get('ammo','?'),
-            'player_id': attr.get('player_id','?')
+            'player_id': attr.get('player_id','?'),
+            'topname': '?',
+            'topscore': '?',
+            'yourscore': scores.get(attr.get('player_id','?'), '?'),
         }
 
-        fmt1 = "{name}"
-        if 'ShowPlayerID' in self.namespace.options:
+        fmt1 = "Name: {name}"
+        if 'ShowPlayerID' in self.namespace.options: #TODO add to flags docs
             fmt1 += ' player_id: {player_id}'
+
+
         # TODO draw hp in green/yellow/red depending on health
         fmt2 = "HP: {hp}({hp_max}) Ammo: {ammo}"
+        # Adding scores to the bottom row.
+        fmt2 += ' Score: {yourscore}'
+
         line1 = fmt1.format(**fmta)
         line2 = fmt2.format(**fmta)
 

@@ -677,10 +677,22 @@ class BaseGame(object):
             p.payload_type = constants.KEYVALUE
 
             p.keyvalues.append(constants.KEYVALUE_SCORES)
+
             scores_text = json.dumps(dict(self.scores))
             p.keyvalues.append(scores_text)
 
+            scores_with_names = {}
+            for key in self.scores:
+                name = self.player_attr[key]['name']
+                scores_with_names[name] = self.scores[key]
+
+            scores_with_names_text = json.dumps(scores_with_names)
+
+            p.keyvalues.append(constants.KEYVALUE_ENHANCED_SCORES)
+            p.keyvalues.append(scores_with_names_text)
+
             for player_id in self.players:
+                # Determine the name of the player
                 packets.append((player_id, p))
 
         return packets

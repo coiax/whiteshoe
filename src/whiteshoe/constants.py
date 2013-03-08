@@ -118,6 +118,7 @@ class Constants(object):
     STATUS_GAMERESUME = 9
 
     KEYVALUE_SCORES = "scores"
+    KEYVALUE_ENHANCED_SCORES = "scores+"
 
     DIRECTIONS = (UP, RIGHT, DOWN, LEFT)
 
