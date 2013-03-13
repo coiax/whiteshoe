@@ -460,17 +460,16 @@ class GameScene(object):
             'topname': '?',
             'topscore': '?',
             'yourscore': scores.get(attr.get('player_id','?'), '?'),
+            'rank': 'Ordinary',
         }
 
-        fmt1 = "Name: {name}"
+        fmt1 = "{name} the {rank}"
         if 'ShowPlayerID' in self.namespace.options: #TODO add to flags docs
-            fmt1 += ' player_id: {player_id}'
+            fmt1 += '  player_id:{player_id}'
 
 
         # TODO draw hp in green/yellow/red depending on health
-        fmt2 = "HP: {hp}({hp_max}) Ammo: {ammo}"
-        # Adding scores to the bottom row.
-        fmt2 += ' Score: {yourscore}'
+        fmt2 = "HP:{hp}({hp_max})  Ammo:{ammo}  Score:{yourscore}"
 
         line1 = fmt1.format(**fmta)
         line2 = fmt2.format(**fmta)
