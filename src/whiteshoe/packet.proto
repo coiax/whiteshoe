@@ -87,6 +87,9 @@ message Packet {
     // 4 s<->c game message
     // 5 s<->c keyvalue
 
+    // 10 s<->c store
+    // 11 s<->c event
+
     // 1 c->s game action
     optional int32 action = 401;
     optional int32 argument = 402;
@@ -178,5 +181,12 @@ message Packet {
     // 5 - keyvalue (s<->c)
     // Arbitary key->values, packed with each key followed by a value
     repeated string keyvalues = 1001;
+
+    // 10 - store (s<->c)
+    optional bytes key = 1200;
+    optional bytes value = 1201;
+
+    // 11 - event (s<->c)
+    optional bytes event = 1300;
 
 }

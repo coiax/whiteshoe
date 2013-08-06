@@ -15,6 +15,11 @@ import collections
 import operator
 import json
 
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
 import constants
 import packet_pb2
 from utility import get_id, grouper
@@ -23,6 +28,9 @@ import utility
 logger = logging.getLogger(__name__)
 
 def client_main(args=None):
+    curses.setupterm("xterm-color256")
+    curses.tigetnum("colors")
+
     p = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
 
     p.add_argument('-c','--connect',default="::1",dest='ipaddr')
@@ -46,8 +54,8 @@ def client_main(args=None):
     ns.options = options
 
     #logging.basicConfig(filename='client.log',level=logging.DEBUG)
-    network = ClientNetwork(ns.socket_type)
-    network.connect((ns.ipaddr, None))
+    network = MultiHackClientNetwork()
+    network.connect((ns.ipaddr, None), socket_type=ns.socket_type)
 
     #network.join_game((ns.connect, None), autojoin=True)
     #scene = GameScene(ns, network)
@@ -55,25 +63,36 @@ def client_main(args=None):
 
     while True:
         try:
-            try:
+            with scene:
                 # interact enters its own loop, and then raises NewScene
                 # or CloseProgram to change the program state
                 scene.interact()
-            except Exception:
-                # scene.cleanup() is called before the exception rises
-                scene.cleanup()
-                raise
         except NewScene as s:
             scene = s[0]
         except (CloseProgram, KeyboardInterrupt):
-            scene.shutdown()
-            network.shutdown()
             break
         except Exception:
-            scene.shutdown()
             # Be polite, if we're crashing, tell the server
             network.shutdown(constants.DISCONNECT_ERROR)
             raise
+
+class Scene(object):
+    def __init__(self, namespace, network):
+        self.namespace = namespace
+        self.network = network
+
+    def interact(self):
+        pass
+
+    def cleanup(self):
+        pass
+
+    def __enter__(self):
+        pass
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.cleanup()
+        return False # always propogate exceptions.
+
 
 def curses_setup(stdscr):
     curses.curs_set(2) # block cursor
@@ -88,7 +107,7 @@ def curses_setup(stdscr):
     curses.init_pair(8, curses.COLOR_BLUE, -1)
     stdscr.nodelay(1)
 
-class SetupScene(object):
+class SetupScene(Scene):
     def __init__(self, namespace, network):
         self.namespace = namespace
         self.network = network
@@ -119,7 +138,9 @@ class SetupScene(object):
         team = self.namespace.team
 
         scene = GameScene(self.namespace, self.network)
+
         self.network.join_game(autojoin=True,player_name=name,player_team=team)
+
         raise NewScene(scene)
 
     def cleanup(self):
@@ -158,7 +179,7 @@ class SetupScene(object):
                     break
                 self.network.update()
 
-class ConsoleScene(object):
+class ConsoleScene(Scene):
     def __init__(self, namespace, network):
         self.network = network
         self.namespace = namespace
@@ -234,13 +255,12 @@ class ScoreScene(object):
         pass
 
 
-class GameScene(object):
+class GameScene(Scene):
     def __init__(self, namespace, network):
         self.namespace = namespace
         self.network = network
 
         self.data = self.namespace.local_data = {}
-        self.unused_events = self.namespace.unused_events = []
 
     def interact(self):
         curses.wrapper(self._real_interact)
@@ -334,70 +354,29 @@ class GameScene(object):
     def tick(self, stdscr):
         self.network.update()
 
-        for event in self.network.get_events():
-            if event[0] in {constants.STATUS_DAMAGED, constants.STATUS_DEATH}:
-                curses.flash()
-            else:
-                self.unused_events.append(event)
+    def draw_viewport(self):
+        location = self.network.store['player_location']
+        world, x, y, z = location
+
+        map_data = self.network.store['universe'][world]
+
+        for coord, entities in map_data.items():
+            x, y = coord
+
+            # There might be multiple entities in a single coordinate
+            # So we need to determine which has the highest priority.
+            # Generally, a monster/player is more important than an item
+            # An item is more important than a dungeon feature (fountain etc.)
+            # A dungeon feature is more important than empty floor, etc.
+
+            # If there's only one entity though, then we don't have to worry
+            # about precedence.
+
+            # First, the debug case, a coordinate with empty entities.
+            # This is clearly a bug, a coordinate has to contain something.
+            if not entities:
 
 
-        self.viewport.clear()
-
-        self.draw_infobar()
-
-        try:
-            my_coord, player = self.network.find_me()
-
-        except PlayerNotFound:
-            # Do not draw the viewport
-            pass
-        else:
-            self.draw_viewport(self.data['topleft'])
-            curses.doupdate()
-
-    def draw_viewport(self, topleft):
-        visible = self.network.get_visible()
-        my_coord, player = self.network.find_me()
-
-        max_y, max_x = self.viewport.getmaxyx()
-
-        bottomright = [topleft[0] + max_x, topleft[1] + max_y]
-
-        drawing = set()
-        for i in range(topleft[0], bottomright[0]):
-            for j in range(topleft[1], bottomright[1]):
-                drawing.add((i,j))
-
-        # drawing is the set of in-game coordinates that we are going
-        # to draw
-        while not all(topleft[i] <= my_coord[i] < bottomright[i]
-                      for i in (0,1)):
-            if bottomright[0] <= my_coord[0]:
-                topleft[0] += 1
-            if bottomright[1] <= my_coord[1]:
-                topleft[1] += 1
-            if topleft[0] > my_coord[0]:
-                topleft[0] -= 1
-            if topleft[1] > my_coord[1]:
-                topleft[1] -= 1
-
-            # Recalculate bottomright
-            bottomright = [topleft[0] + max_x, topleft[1] + max_y]
-
-        if my_coord in drawing:
-            screen_x,screen_y = (my_coord[0] - topleft[0],
-                                 my_coord[1] - topleft[1])
-            curses.curs_set(2) # block cursor
-        else:
-            screen_x, screen_y = (0,0)
-            curses.curs_set(0) # hide cursor
-
-
-        for coord, objects in visible.items():
-            if coord not in drawing:
-                continue
-
-            x,y = (coord[0] - topleft[0], coord[1] - topleft[1])
             if objects:
                 for o in objects:
                     display_chr, colour = self.display_character(o)
@@ -621,6 +600,234 @@ class GameScene(object):
             except NotInGame:
                 # TODO Put notification on message buffer
                 pass
+
+class _MultiHackClientNetworkPacketHandler(object):
+    def _store_packet(self, packet):
+        key = pickle.loads(packet.key)
+        value = pickle.loads(packet.value)
+
+        with self._lock:
+            self._store[key] = value
+
+    def _event_packet(self, packet):
+        event = pickle.loads(packet.event)
+        with self._lock:
+            self._events.append(event)
+
+    def _keep_alive_packet(self, packet):
+        pass
+    def _disconnect_packet(self, packet):
+        raise ServerDisconnect
+
+class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
+    def __init__(self):
+        self.handlers = {
+            constants.Payload.store: self._store_packet,
+            constants.Payload.event: self._event_packet,
+            constants.KEEP_ALIVE: self._keep_alive_packet,
+            constants.DISCONNECT: self._disconnect_packet,
+        }
+
+        self.socket = None
+        self.socket_type = None
+
+        self._events = []
+        self._store = {}
+        self._remote_store = {}
+
+        self.keepalive_timer = utility.Stopwatch()
+        self.lastheard_timer = utility.Stopwatch()
+
+        self._buffer = ''
+
+        self._lock = threading.RLock()
+        self._thread = None
+        self._thread_running = False
+
+    def remote_set(self, key, value):
+        if key in self._remote_store and self._remote_store[key] == value:
+            # Do nothing.
+            return
+        else:
+            p = packet_pb2.Packet()
+            p.payload_type = constants.Payload.store
+            p.key = pickle.dumps(key, -1)
+            p.value = pickle.dumps(value, -1)
+            self._send_packets(p)
+
+    def remote_event(self, event):
+        p = packet_pb2.Packet()
+        p.payload_type = constants.Payload.event
+        p.event = pickle.dumps(event, -1)
+        self._send_packets(p)
+
+    def start_thread(self):
+        assert self._thread is None
+        assert not self._thread_running
+        assert self.socket is not None
+
+        self._thread = threading.Thread(target=self._thread_loop)
+        self._thread_running = True
+        self._thread.start()
+
+    def stop_thread(self):
+        assert self._thread is not None
+        assert self._thread_running
+
+        with self._lock:
+            self._thread_running = False
+
+        self._thread.join()
+        self._thread = None
+
+    def _thread_loop(self):
+        while True:
+            with self._lock:
+                if not self._thread_running:
+                    break
+                self.update()
+
+    def connect(self, addr, socket_type='tcp'):
+        assert socket_type in ('tcp','udp')
+        self.socket_type = socket_type
+
+        ip,port = addr
+
+        if port is None:
+            port = constants.DEFAULT_PORT
+
+        if '.' in ip:
+            family = socket.AF_INET
+        elif ':' in ip:
+            family = socket.AF_INET6
+        else:
+            family = socket.AF_INET6
+
+        if self.socket_type == 'tcp':
+            type_ = socket.SOCK_STREAM
+        elif self.socket_type == 'udp':
+            type_ = socket.SOCK_DGRAM
+
+        self.socket = socket.socket(family, type_)
+        self._server_addr = (ip, port)
+
+        if self.socket_type == 'tcp':
+            self.socket.connect((ip, port))
+
+        self._send_keepalive()
+        self.lastheard_timer.start()
+
+    def _send_keepalive(self):
+        p = packet_pb2.Packet()
+        p.payload_type = constants.KEEP_ALIVE
+        p.timestamp = int(time.time())
+
+        self._send_packets(p)
+
+    def join_game(self, autojoin=False, game_id=None,
+                  player_name=None, player_team=None):
+
+        assert self.socket is not None
+        assert autojoin or game_id is not None
+
+        p = packet_pb2.Packet()
+        p.payload_type = constants.JOIN_GAME
+        if autojoin:
+            p.autojoin = True
+        else:
+            p.autojoin = False
+            p.join_game_id = game_id
+        if player_name is not None:
+            p.player_name = player_name
+        if player_team is not None:
+            p.player_team = player_team
+
+        self._send_packets(p)
+
+    def update(self):
+        with self._lock:
+            self._ticklet()
+            if self.keepalive_timer.elapsed_seconds > constants.KEEPALIVE_TIME:
+                self._send_keepalive()
+
+            if self.lastheard_timer.elapsed_seconds > 30:
+                # Later, we'll flag the server as being disconnected,
+                # but for now, raise the exception FIXME
+                raise ServerDisconnect
+
+    def shutdown(self, reason=constants.DISCONNECT_SHUTDOWN):
+        if self.socket is not None:
+            p = packet_pb2.Packet()
+            p.payload_type = constants.DISCONNECT
+            p.disconnect_code = reason
+
+            self._send_packets(p)
+
+    @property
+    def events(self):
+        with self._lock:
+            out = self._events
+            self._events = []
+        return out
+
+    def get_events(self):
+        return self.events
+
+    @property
+    def store(self):
+        with self._lock:
+            return self._store.copy()
+
+    def _ticklet(self):
+        rlist, wlist, xlist = select.select((self.socket,),(),(),0.1)
+        for rs in rlist:
+            if self.socket_type == 'udp':
+                data, addr = rs.recvfrom(4096)
+                chunks = (data,)
+            elif self.socket_type == 'tcp':
+                data = rs.recv(4096)
+                if not data:
+                    raise ServerDisconnect
+
+                self._buffer += data
+                chunks, buffer = utility.stream_unwrap(self._buffer)
+                self._buffer = buffer
+
+            self.lastheard_timer.restart()
+            try:
+                for chunk in chunks:
+                    packet = packet_pb2.Packet.FromString(chunk)
+
+                    self.handlers[packet.payload_type](packet)
+
+            except Exception as e:
+                #traceback.print_exc()
+                # Can't print exceptions when the tty is up
+                raise
+
+    def _send_packets(self, *args):
+        assert self.socket is not None
+        packets = []
+        for arg in args:
+            try:
+                iter(arg)
+            except TypeError:
+                packets.append(arg)
+            else:
+                packets.extend(arg)
+
+        for packet in packets:
+            if self.socket_type == 'udp':
+                p.packet_id = get_id('packet')
+
+            data = packet.SerializeToString()
+            if self.socket_type == 'tcp':
+                self.socket.sendall(utility.stream_wrap(data))
+            elif self.socket_type == 'udp':
+                self.socket.sendto(data, self._server_addr)
+
+        self.keepalive_timer.restart()
+
 
 class ClientNetwork(object):
     def __init__(self,socket_type='tcp'):

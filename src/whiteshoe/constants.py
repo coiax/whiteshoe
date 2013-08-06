@@ -2,206 +2,229 @@ import operator
 import sys
 import os.path
 
-class Constants(object):
-    UP = "up"
-    NORTHEAST = "ne"
-    NORTHWEST = "nw"
-    DOWN = "down"
-    SOUTHEAST = "se"
-    SOUTHWEST = "sw"
-    LEFT = "left"
-    RIGHT = "right"
+from flufl.enum import Enum, IntEnum
+from utility import get_id
 
-    CMD_MOVE = "move"
-    CMD_LOOK = "look"
-    CMD_FIRE = "fire"
+class Direction(Enum):
+    up = get_id('enum')
+    down = get_id('enum')
 
-    OBJ_WALL = "wall"
-    OBJ_HORIZONTAL_WALL = "h-wall"
-    OBJ_VERTICAL_WALL = "v-wall"
-    OBJ_CORNER_WALL = "c-wall"
-    OBJ_PLAYER = "player"
-    OBJ_EMPTY = "empty"
-    OBJ_BULLET = "bullet"
-    OBJ_EXPLOSION = "boom"
-    OBJ_MINE = "mine"
-    OBJ_SLIME = "slime"
-    OBJ_SLIME_BULLET = "slime-bullet"
-    OBJ_LAVA = "lava"
+    left = get_id('enum')
+    right = get_id('enum')
 
-    N1 = 1
-    N2 = 2
-    N3 = 3
-    N4 = 4
-    N5 = 5
-    N6 = 6
-    N7 = 7
-    N8 = 8
-    N9 = 9
-    SMALL_SLIME = "small-slime"
-    BIG_SLIME = "big-slime"
+    north = get_id('enum')
+    northeast = get_id('enum')
+    east = get_id('enum')
+    southeast = get_id('enum')
+    south = get_id('enum')
+    southwest = get_id('enum')
+    west = get_id('enum')
+    northwest = get_id('enum')
+
+class Event(Enum):
+    action = get_id('enum')
+
+class Action(Enum):
+    move = get_id('enum')
+    look = get_id('enum')
+    fire = get_id('enum')
 
 
-    # Check for duplicate values
-    assert sorted(vars().values()) == sorted(set(vars().values())) # duplicates
+OBJ_WALL = "wall"
+OBJ_HORIZONTAL_WALL = "h-wall"
+OBJ_VERTICAL_WALL = "v-wall"
+OBJ_CORNER_WALL = "c-wall"
+OBJ_PLAYER = "player"
+OBJ_EMPTY = "empty"
+OBJ_BULLET = "bullet"
+OBJ_EXPLOSION = "boom"
+OBJ_MINE = "mine"
+OBJ_SLIME = "slime"
+OBJ_SLIME_BULLET = "slime-bullet"
+OBJ_LAVA = "lava"
 
-    _constants = list(vars().items())
-    _constants.sort(key=operator.itemgetter(0))
-    _constants_table = [c[1] for c in _constants]
-    del _constants
+N1 = 1
+N2 = 2
+N3 = 3
+N4 = 4
+N5 = 5
+N6 = 6
+N7 = 7
+N8 = 8
+N9 = 9
+SMALL_SLIME = "small-slime"
+BIG_SLIME = "big-slime"
 
-    # Non-network constants after this point
 
-    BANNER = """Whiteshoe {version}""".format(version='0.0.0')
+# Check for duplicate values
+assert sorted(vars().values()) == sorted(set(vars().values())) # duplicates
 
-    CONFIG_LOCATIONS = (os.path.join('~','.config','whiteshoe','config'),
-                        os.path.join('~','.whiteshoe','config'),
-                       )
-    SLIME_COSTS = {
-        SMALL_SLIME: 5,
-        BIG_SLIME: 10,
-    }
-    SLIME_SPREAD = {
-        SMALL_SLIME: 10,
-        BIG_SLIME: 20,
-    }
-    SLIME_BULLET_SPEED = {
-        SMALL_SLIME: 0.10,
-        BIG_SLIME: 0.20,
-    }
+_constants = list(vars().items())
+_constants.sort(key=operator.itemgetter(0))
+_constants_table = [c[1] for c in _constants]
+del _constants
 
-    SLIME_SPREAD_TIME = 0.3
-    SLIME_DAMAGE = 5
+# Non-network constants after this point
 
-    LAVA_TIME = 0.5
-    LAVA_DAMAGE = 1
+BANNER = """Whiteshoe {version}""".format(version='0.0.0')
 
-    PACKET_SIZE_LIMIT = 600
-    DEFAULT_PORT = 25008
-    TIMEOUT = 30
+CONFIG_LOCATIONS = (os.path.join('~','.config','whiteshoe','config'),
+                    os.path.join('~','.whiteshoe','config'),
+                   )
+SLIME_COSTS = {
+    SMALL_SLIME: 5,
+    BIG_SLIME: 10,
+}
+SLIME_SPREAD = {
+    SMALL_SLIME: 10,
+    BIG_SLIME: 20,
+}
+SLIME_BULLET_SPEED = {
+    SMALL_SLIME: 0.10,
+    BIG_SLIME: 0.20,
+}
 
-    DAMAGETYPE_UNKNOWN = 1
-    DAMAGETYPE_STAB = 2
-    DAMAGETYPE_EXPLOSION = 3
-    DAMAGETYPE_SLIME = 4
-    DAMAGETYPE_LAVA = 5
+SLIME_SPREAD_TIME = 0.3
+SLIME_DAMAGE = 5
 
-    GET_GAMES_LIST = -1
-    GAMES_LIST = -2
-    MAKE_NEW_GAME = -3
-    ERROR = -4
-    JOIN_GAME = -5
-    KEEP_ALIVE = -6
-    DISCONNECT = -7
+LAVA_TIME = 0.5
+LAVA_DAMAGE = 1
 
-    GAME_ACTION = 1
-    VISION_UPDATE = 2
-    GAME_STATUS = 3
-    GAME_MESSAGE = 4
-    KEYVALUE = 5
+PACKET_SIZE_LIMIT = 600
+DEFAULT_PORT = 25008
+TIMEOUT = 30
 
-    DISCONNECT_SHUTDOWN = 1
-    DISCONNECT_KICKED = 2
-    DISCONNECT_ERROR = 3
-    DISCONNECT_TIMEOUT = 4
+DAMAGETYPE_UNKNOWN = 1
+DAMAGETYPE_STAB = 2
+DAMAGETYPE_EXPLOSION = 3
+DAMAGETYPE_SLIME = 4
+DAMAGETYPE_LAVA = 5
 
-    ERROR_NOT_IN_GAME = 1
+GET_GAMES_LIST = -1
+GAMES_LIST = -2
+MAKE_NEW_GAME = -3
+ERROR = -4
+JOIN_GAME = -5
+KEEP_ALIVE = -6
+DISCONNECT = -7
 
-    STATUS_GAMEINFO = 1
-    STATUS_JOINED = 2
-    STATUS_LEFT = 3
-    STATUS_DEATH = 4
-    STATUS_DAMAGED = 5
-    STATUS_SPAWN = 6
-    STATUS_KILL = 7
-    STATUS_GAMEPAUSE = 8
-    STATUS_GAMERESUME = 9
+GAME_ACTION = 1
+VISION_UPDATE = 2
+GAME_STATUS = 3
+GAME_MESSAGE = 4
+KEYVALUE = 5
 
-    KEYVALUE_SCORES = "scores"
-    KEYVALUE_ENHANCED_SCORES = "scores+"
+class Payload(IntEnum):
+    store = 10
+    event = 11
 
-    DIRECTIONS = (UP, RIGHT, DOWN, LEFT)
+DISCONNECT_SHUTDOWN = 1
+DISCONNECT_KICKED = 2
+DISCONNECT_ERROR = 3
+DISCONNECT_TIMEOUT = 4
 
-    DIFFS = {
-        UP: (0, -1),
-        NORTHEAST: (1,-1),
-        NORTHWEST: (-1,-1),
-        DOWN: (0, 1),
-        SOUTHEAST: (1,1),
-        SOUTHWEST: (-1,1),
-        LEFT: (-1, 0),
-        RIGHT: (1, 0)
-    }
-    ADJACENT = {
-        UP: (LEFT, UP, RIGHT, NORTHEAST, NORTHWEST),
-        DOWN: (LEFT, DOWN, RIGHT, SOUTHEAST, SOUTHWEST),
-        LEFT: (UP, LEFT, DOWN, NORTHWEST, SOUTHWEST),
-        RIGHT: (UP, RIGHT, DOWN, NORTHEAST, SOUTHEAST),
-    }
+ERROR_NOT_IN_GAME = 1
 
-    WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)
-    HISTORICAL_OBJECTS = WALLS + (OBJ_EMPTY,)
-    SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
-    AIRTIGHT_OBJECTS = WALLS
-    OPAQUE_OBJECTS = WALLS
-    ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,OBJ_SLIME)
-    TEMPORARY_OBJECTS = (OBJ_EXPLOSION, OBJ_SLIME)
+STATUS_GAMEINFO = 1
+STATUS_JOINED = 2
+STATUS_LEFT = 3
+STATUS_DEATH = 4
+STATUS_DAMAGED = 5
+STATUS_SPAWN = 6
+STATUS_KILL = 7
+STATUS_GAMEPAUSE = 8
+STATUS_GAMERESUME = 9
 
-    VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET,
-                              OBJ_MINE)
-    BLOWABLE_UP = WALLS + (OBJ_PLAYER,OBJ_MINE,OBJ_SLIME)
-    CAN_STAB = (OBJ_PLAYER,)
-    SLIMEABLE = (OBJ_PLAYER, OBJ_MINE)
+KEYVALUE_SCORES = "scores"
+KEYVALUE_ENHANCED_SCORES = "scores+"
 
-    DISPLAY_CHAR = {
-        OBJ_PLAYER: '@',
-        OBJ_WALL: '#',
-        OBJ_HORIZONTAL_WALL: '-',
-        OBJ_VERTICAL_WALL: '|',
-        OBJ_CORNER_WALL: '+',
-        OBJ_BULLET: ':',
-        OBJ_SLIME: '$',
-        OBJ_SLIME_BULLET: '$',
-        OBJ_LAVA: '~',
-        OBJ_EMPTY: '.',
-    }
+DIRECTIONS = (UP, RIGHT, DOWN, LEFT)
+MULTIHACK_DIRECTIONS = (UP, DOWN, NORTH, NORTHEAST, EAST, SOUTHEAST,
+                        SOUTH, SOUTHWEST, WEST, NORTHWEST)
 
-    ATTRIBUTE_KEYS = ("player_id", "direction", "team", "hp_max", "hp",
-                      "max_ammo", "ammo", "owner","size","historical",
-                      "name")
-    ATTRIBUTE_CONSTANT_KEYS = ("direction","size")
+DIFFS = {
+    UP: (0, -1),
+    NORTHEAST: (1,-1),
+    NORTHWEST: (-1,-1),
+    DOWN: (0, 1),
+    SOUTHEAST: (1,1),
+    SOUTHWEST: (-1,1),
+    LEFT: (-1, 0),
+    RIGHT: (1, 0),
 
-    BULLET_SPEEDS = {
-        1: 0.05,
-        2: 0.10,
-        3: 0.15,
-        4: 0.20,
-        5: 0.25,
-        6: 0.30,
-        7: 0.35,
-        8: 0.40,
-        9: 0.45,
-    }
-    EXPLOSION_LIFE = 0.5
-    KEEPALIVE_TIME = 5
-    STAB_DAMAGE = 2
+    NORTH: (0, -1),
+    SOUTH: (0, 1),
+    EAST: (-1, 0),
+    WEST: (1,0),
 
-    ORIGIN_UNKNOWN = -1
-    ORIGIN_ENVIRONMENT = -2
+}
 
-    MINE_DIRECT_PROBABILITY = 0.98
-    MINE_SIDE_PROBABILITY = 0.50
-    MINE_BACKWARDS_PROBABILITY = 0.02
 
-    @classmethod
-    def to_numerical_constant(cls,constant):
-        return cls._constants_table.index(constant)
 
-    @classmethod
-    def from_numerical_constant(cls,number):
-        return cls._constants_table[number]
+ADJACENT = {
+    UP: (LEFT, UP, RIGHT, NORTHEAST, NORTHWEST),
+    DOWN: (LEFT, DOWN, RIGHT, SOUTHEAST, SOUTHWEST),
+    LEFT: (UP, LEFT, DOWN, NORTHWEST, SOUTHWEST),
+    RIGHT: (UP, RIGHT, DOWN, NORTHEAST, SOUTHEAST),
+}
 
-# This is a Guido approved hack that replaces the module that you're about
-# to import with a class instance, so that our vars() doesn't pick up
-# all the builtin crap
-sys.modules[__name__] = Constants()
+WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)
+HISTORICAL_OBJECTS = WALLS + (OBJ_EMPTY,)
+SOLID_OBJECTS = WALLS + (OBJ_PLAYER,)
+AIRTIGHT_OBJECTS = WALLS
+OPAQUE_OBJECTS = WALLS
+ALWAYS_VISIBLE_OBJECTS = (OBJ_EXPLOSION,OBJ_SLIME)
+TEMPORARY_OBJECTS = (OBJ_EXPLOSION, OBJ_SLIME)
+
+VISIBLE_OBJECTS = WALLS + (OBJ_EMPTY,OBJ_PLAYER,OBJ_EXPLOSION,OBJ_BULLET,
+                          OBJ_MINE)
+BLOWABLE_UP = WALLS + (OBJ_PLAYER,OBJ_MINE,OBJ_SLIME)
+CAN_STAB = (OBJ_PLAYER,)
+SLIMEABLE = (OBJ_PLAYER, OBJ_MINE)
+
+DISPLAY_CHAR = {
+    OBJ_PLAYER: '@',
+    OBJ_WALL: '#',
+    OBJ_HORIZONTAL_WALL: '-',
+    OBJ_VERTICAL_WALL: '|',
+    OBJ_CORNER_WALL: '+',
+    OBJ_BULLET: ':',
+    OBJ_SLIME: '$',
+    OBJ_SLIME_BULLET: '$',
+    OBJ_LAVA: '~',
+    OBJ_EMPTY: '.',
+}
+
+ATTRIBUTE_KEYS = ("player_id", "direction", "team", "hp_max", "hp",
+                  "max_ammo", "ammo", "owner","size","historical",
+                  "name")
+ATTRIBUTE_CONSTANT_KEYS = ("direction","size")
+
+BULLET_SPEEDS = {
+    1: 0.05,
+    2: 0.10,
+    3: 0.15,
+    4: 0.20,
+    5: 0.25,
+    6: 0.30,
+    7: 0.35,
+    8: 0.40,
+    9: 0.45,
+}
+EXPLOSION_LIFE = 0.5
+KEEPALIVE_TIME = 5
+STAB_DAMAGE = 2
+
+ORIGIN_UNKNOWN = -1
+ORIGIN_ENVIRONMENT = -2
+
+MINE_DIRECT_PROBABILITY = 0.98
+MINE_SIDE_PROBABILITY = 0.50
+MINE_BACKWARDS_PROBABILITY = 0.02
+
+def to_numerical_constant(constant):
+    return _constants_table.index(constant)
+
+def from_numerical_constant(number):
+    return _constants_table[number]
+

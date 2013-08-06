@@ -1,6 +1,7 @@
 import random
 import collections
 import json
+import pickle
 
 import utility
 import constants
@@ -1035,6 +1036,155 @@ def pack_attribute(obj_attr):
             setattr(attribute, key, value)
     return attribute
 
+class _MultiHackEventHandler(object):
+    def _do_move(self, player_state, event_flags):
+        if player_state in self.players.values():
+            pass
+        else:
+            player_id = player_state
+            player_state = self.players[player_id]
+
+        direction = set(event_flags) & set(constants.MULTIHACK_DIRECTIONS)
+        assert len(direction) == 1
+        direction = direction.pop()
+        # TODO special case UP and DOWN
+
+        current_location = player_state['location']
+
+        # This is not minecraft, x and y are as usual, z is depth.
+        # World is generally one of the dungeon levels
+        # GENERALLY, z is 0. But say you're at the bottom of a moat,
+        # or climbed up a tree? You're still on the same level, but you
+        # have a different z.
+        world_name, x, y, z = current_location
+
+        world = self.universe[world_name]
+
+        current_location_entities = world[x,y,z]
+        player_entity_id = player_state['entity_id']
+        for entity in current_location_entities:
+            if entity.id == player_entity_id:
+                player_entity = entity
+                break
+        else:
+            # We didn't find the player. SOMETHING HAS GONE HORRIBLY
+            # WRONG AAAAAAAAA
+            assert False #TODO better exception.
+
+        diff = constants.DIFFS[direction]
+
+        new_x, new_y = x + diff[0], y + diff[1]
+        new_z = z
+
+        new_location_entities = world[new_x, new_y, new_z]
+        for entity in new_location_entities:
+            if "walkable" not in entity.flags:
+                # Special case walking into walls and closed doors.
+                print("bump")
+                break #TODO implement bumping into things
+        else:
+            current_location_entities.remove(player_entity)
+            new_location_entities.append(player_entity)
+            # TODO obviously, we'll now check to see if you fall into the moat
+            # or the lava.
+            player_state['location'] = (world_name, new_x, new_y, new_z)
+
+            print(player_state['location'])
+
+Entity = collections.namedtuple('Entity','id name flags')
+
+@gamemode
+class MultiHack(_MultiHackEventHandler):
+    mode = 'multihack'
+    def __init__(self,name="Untitled",id=None,**kwargs):
+        #def __init__(self,max_players=20,map_generator='purerandom',
+        #         name='Untitled',id=None,vision='basic',options=None):
+            #
+        self.name = name
+        self.id = id if id is not None else utility.get_id('game')
+
+        self.players = {}
+        self.universe = {}
+
+        # Quickly spin up a shitty world substitute.
+        world = {}
+
+        self.random = random.Random(0)
+
+        self._empties = [] # not permament, just used for the hacky current
+                           # setup
+
+        for x in range(80):
+            for y in range(24):
+                world[x,y,0] = entities = []
+                entity_id = utility.get_id('entity')
+                if self.random.random() < 0.35:
+                    entity = Entity(entity_id, 'wall', set())
+                else:
+                    entity = Entity(entity_id, 'floor', set(['walkable']))
+                    self._empties.append((x,y))
+                entities.append(entity)
+
+        self.random.shuffle(self._empties)
+
+        self.universe['level1'] = world
+
+    def player_join(self, player_id, name=None, team=None):
+        assert player_id not in self.players
+        self.players[player_id] = player_state = {}
+
+        player_state['client_store'] = {}
+        entity_x, entity_y = self._empties.pop()
+
+        player_state['location'] = ('level1', entity_x, entity_y, 0)
+        player_state['entity_id'] = entity_id = utility.get_id('entity')
+
+        entity = Entity(entity_id, 'player', set())
+
+        self.universe['level1'][entity_x, entity_y, 0].append(entity)
+
+    def player_leave(self, player_id):
+        assert player_id in self.players
+        player_state = self.players[player_id]
+        location = player_state['location']
+        entity_id = player_state['entity_id']
+
+        world = self.universe[location[0]]
+        x,y,z = location[1], location[2], location[3]
+
+        for entity in world[x,y,z]:
+            if entity.id == entity_id:
+                world[x,y,z].remove(entity)
+                break
+
+        del self.players[player_id]
+
+    def handle(self, packet, player_id):
+        assert player_id in self.players
+        player_state = self.players[player_id]
+
+        if packet.payload_type == 10: #FIXME magic numbers, this is STORE
+            key = pickle.loads(packet.key)
+            value = pickle.loads(packet.value)
+            assert hash(key)
+        
+            player_state['client_store'][key] = value
+
+        elif packet.payload_type == 11:
+            event = pickle.loads(packet.event)
+
+            handlers = {
+                "move": self._do_move
+            }
+
+            handler = handlers[event[0]]
+            handler(*event[1:])
+
+        return []
+
+    tick = None
+
+
 @gamemode
 class FreeForAllGame(BaseGame):
     mode = 'ffa'
@@ -1092,3 +1242,8 @@ class GameException(Exception):
 
 class PlayerNotFound(GameException):
     pass
+
+if __name__=='__main__':
+    mh = MultiHack()
+    mh.player_join("bob")
+    world = mh.universe['level1']

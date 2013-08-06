@@ -94,7 +94,7 @@ class Server(object):
         while True:
             try:
                 for game in self.games:
-                    packets = game.tick()
+                    packets = game.tick() if game.tick is not None else []
                     self._send_packets(packets)
 
                 for network_id in list(self.clients):
@@ -221,7 +221,18 @@ class Server(object):
                 else:
                     traceback.print_exc()
 
-    def _send_packets(self, packets):
+    def _send_packets(self, *args):
+        packets = []
+        for arg in args:
+            if arg is None:
+                continue
+            try:
+                iter(arg)
+            except TypeError:
+                packets.append(arg)
+            else:
+                packets.extend(arg)
+
         for network_id, packet in packets:
             data = packet.SerializeToString()
 
