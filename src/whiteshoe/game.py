@@ -1,10 +1,13 @@
 import random
 import collections
 import json
+import logging
 try:
     import cPickle as pickle
 except ImportError:
     import pickle
+
+logger = logging.getLogger(__name__)
 
 import utility
 import constants
@@ -1044,10 +1047,10 @@ def pack_attribute(obj_attr):
     return attribute
 
 class _MultiHackEventHandler(object):
-    def _do_move(self, player_id, event_flags=()):
+    def _do_move(self, player_id, flags=()):
         player_state = self.players[player_id]
 
-        direction = set(event_flags) & set(constants.MULTIHACK_DIRECTIONS)
+        direction = set(flags) & set(constants.MULTIHACK_DIRECTIONS)
         assert len(direction) == 1
         direction = direction.pop()
         # TODO special case UP and DOWN
@@ -1089,6 +1092,9 @@ class _MultiHackEventHandler(object):
             msg = "{} attempted to move to non existent coord {}"
             logger.warning(msg.format(player_id, (new_x, new_y, new_z)))
             move_happening = False
+
+            new_location_entities = ()
+
         for entity in new_location_entities:
             if "walkable" not in entity.flags:
                 # Special case walking into walls and closed doors.
@@ -1101,9 +1107,62 @@ class _MultiHackEventHandler(object):
             new_location_entities.append(player_entity)
             # TODO obviously, we'll now check to see if you fall into the moat
             # or the lava.
-            player_state['location'] = (world_name, new_x, new_y, new_z)
+            location = (world_name, new_x, new_y, new_z)
+
+            player_state['remote_store']['player_location'] = location
+            player_state['location'] = location
 
             #print(player_state['location'])
+
+    def _do_command(self, player_id, commandstr):
+        player_state = self.players[player_id]
+
+        parts = commandstr.split()
+        if parts:
+            command = parts[0]
+            args = parts[1:]
+        else:
+            command = 'noop'
+            args = ()
+
+        handlers = {
+            'status': self._command_status,
+            'noop': lambda *args: None,
+            'savestate': self._command_savestate,
+            'loadstate': self._command_loadstate,
+        }
+
+        # TODO complain at the client for a bad command
+        if command not in handlers:
+            self._message_player(player_id, "Bad command: {}".format(command))
+        else:
+            handler = handlers[command]
+            handler(player_id, *args)
+
+class _MultiHackCommandHandler(object):
+    def _command_status(self, player_id):
+        num_levels = len(self.universe)
+        num_entities = 0
+        for level in self.universe:
+            for coord, entities in self.universe[level].items():
+                num_entities += len(entities)
+
+        fmt = "{} levels, with {} entities."
+
+        self._message_player(player_id, fmt.format(num_levels, num_entities))
+    def _command_savestate(self, player_id):
+        state = self.save_state()
+        with open('game.state', 'wb') as f:
+            pickle.dump(state, f)
+    def _command_loadstate(self, player_id):
+        with open('game.state','rb') as f:
+            state = pickle.load(f)
+        self.load_state(state)
+
+class _MultiHackUtility(object):
+    def _message_player(self, player_id, message):
+        event = ("message", message)
+        self.players[player_id]['event_queue'].append(event)
 
 Entity = collections.namedtuple('Entity','id name flags character colour')
 
@@ -1116,7 +1175,8 @@ def quick_unpickle(binstr):
     return pickle.loads(binstr)
 
 @gamemode
-class MultiHack(_MultiHackEventHandler):
+class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
+                _MultiHackUtility):
     mode = 'multihack'
     def __init__(self,name="Untitled",id=None,**kwargs):
         #def __init__(self,max_players=20,map_generator='purerandom',
@@ -1154,8 +1214,19 @@ class MultiHack(_MultiHackEventHandler):
 
         self.universe['level1'] = world
 
+    def save_state(self):
+        state = {'universe': self.universe, 'random': self.random.getstate(),
+                 'players': self.players}
+        return state
+
+    def load_state(self, state):
+        self.universe = state['universe']
+        self.random.setstate(state['random'])
+        self.players = state['players']
+
     def player_join(self, player_id, name=None, team=None):
-        assert player_id not in self.players
+        player_id = utility.get_id('player')
+
         self.players[player_id] = player_state = {}
 
         # The client store is where THEY give us information.
@@ -1166,6 +1237,8 @@ class MultiHack(_MultiHackEventHandler):
         # while we're debugging.
 
         player_state['remote_store'] = utility.DifflingAuthor(aggressive=True)
+        player_state['event_queue'] = []
+
         entity_x, entity_y = self._empties.pop()
 
         player_state['location'] = ('level1', entity_x, entity_y, 0)
@@ -1196,6 +1269,20 @@ class MultiHack(_MultiHackEventHandler):
             p.diff = diff
 
             packets.append((player_id,p))
+
+        has_events = False
+
+        for event in self.players[player_id]['event_queue']:
+            p = wire.Packet()
+            p.payload_type = constants.Payload.event
+            p.event = quick_pickle(event)
+            packets.append((player_id, p))
+
+            has_events = True
+
+        if has_events:
+            self.players[player_id]['event_queue'] = []
+
         return packets
 
     def _crappy_all_store(self):
@@ -1204,8 +1291,10 @@ class MultiHack(_MultiHackEventHandler):
             packets.extend(self._crappy_store(player_id))
         return packets
 
+
     def player_leave(self, player_id):
         assert player_id in self.players
+
         player_state = self.players[player_id]
         location = player_state['location']
         entity_id = player_state['entity_id']
@@ -1224,6 +1313,7 @@ class MultiHack(_MultiHackEventHandler):
 
     def handle(self, packet, player_id):
         assert player_id in self.players
+
         player_state = self.players[player_id]
 
         if packet.payload_type == constants.Payload.picklediff:
@@ -1236,9 +1326,12 @@ class MultiHack(_MultiHackEventHandler):
             event = pickle.loads(packet.event)
 
             handlers = {
-                "move": self._do_move
+                "move": self._do_move,
+                "command": self._do_command
             }
 
+            #TODO handle unknown commands. Probably by kicking the client,
+            # tbh.
             handler = handlers[event[0]]
             handler(player_id, *event[1:])
 

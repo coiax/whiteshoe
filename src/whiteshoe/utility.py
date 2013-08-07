@@ -6,6 +6,7 @@ import logging
 import random
 import re
 import struct
+import marshal
 try:
     import cPickle as pickle
 except ImportError:
@@ -396,11 +397,19 @@ class DifflingAuthor(object):
 
         return changes
 
-class DifflingReader(object):
+class DifflingReader(collections.Mapping):
     def __init__(self):
         self._items = {}
         self._pickled = {}
 
+    def __getitem__(self, key):
+        return self._items[key]
+    def __len__(self):
+        return len(self._items)
+    def __contains__(self, key):
+        return  key in self._items
+    def __iter__(self):
+        return iter(self._items)
     def copy(self):
         return self._items.copy()
 
@@ -418,9 +427,6 @@ class DifflingReader(object):
         for key, diff in L:
             self.feed(key, diff)
 
-    def __getitem__(self, key):
-        return self._items[key]
-
 def test_diffling():
     da = DifflingAuthor()
     dr = DifflingReader()
@@ -434,3 +440,100 @@ def test_diffling():
 
     dr._feed_list(da.get_changes())
     assert dr["key"] == test2
+
+def dict_check(obj):
+    singleton = object()
+    value = object()
+    try:
+        obj[singleton] = value
+        obj[singleton]
+        del obj[singleton]
+    except TypeError:
+        return False
+    else:
+        return True
+
+class nesty(object):
+    def __init__(self, _prefix=(), _dict=None):
+        if _dict is None:
+            _dict = {}
+
+        self._dict = _dict
+        self._prefix = _prefix
+        self._keys = set()
+
+    def __repr__(self):
+        name = self.__class__.__name__
+        prefix = self._prefix
+        keys = self._keys
+
+        fmt = "<{name} prefix={prefix} keys={keys}>"
+
+        return fmt.format(**vars())
+
+    def __getitem__(self, key):
+        return self._dict[self._prefix + (key,)]
+    def __setitem__(self, key, value):
+        if dict_check(value):
+            if type(value) != dict:
+                raise TypeError("Non vanilla dicts cannot use a nesty.")
+            replacement = self.__class__(_prefix=self._prefix + (key,),
+                                         _dict=self._dict)
+            for inner_key in value:
+                replacement[inner_key] = value[inner_key]
+
+            self._dict[self._prefix + (key,)] = replacement
+        else:
+            self._dict[self._prefix + (key,)] = value
+        self._keys.add(key)
+
+    def __delitem__(self, key):
+        key_prefix = self._prefix + (key,)
+        key_prefix_length = len(key_prefix)
+
+        value = self._dict.pop(key_prefix)
+        self._keys.remove(key)
+
+        for key in list(self._dict):
+            if key[:key_prefix_length] == key_prefix:
+                del self._dict[key]
+
+
+    def keys(self):
+        return self._keys
+
+    def empty(self):
+        for key in self._keys:
+            del self[key]
+
+    def __contains__(self, key):
+        return key in self._keys
+    def __len__(self):
+        return len(self._keys)
+    def items(self):
+        for key in self._keys:
+            yield (key, self._dict[self._prefix + (key,)])
+    def values(self):
+        for key in self._keys:
+            yield self._dict[self._prefix + (key,)]
+    def get(self, key, default=None):
+        if key in self:
+            return self[key]
+        else:
+            return default
+
+def test_nesty():
+    n = nesty()
+    n["layer1"] = "The bottom."
+    n["depth"] = {}
+    n["depth"]["layer2"] = "Hello there!"
+    del n["depth"]["layer2"]
+
+    assert n["depth"].get("layer2") is None
+    n["depth"]["doomed"] = 40
+    del n["depth"]
+    assert len(n._dict) == 1
+
+    n = nesty()
+    n["one"] = {"two": {"three": "value"}}
+    assert n["one"]["two"]["three"] == 'value'

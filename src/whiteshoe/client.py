@@ -15,6 +15,7 @@ import collections
 import operator
 import json
 import multiprocessing
+import os
 
 try:
     import cPickle as pickle
@@ -33,8 +34,7 @@ def client_main(args=None):
     # or nocolour.
     # Also ask at some point about colourblindness
     # Probably also need a unicode check as well.
-    curses.setupterm("xterm-256color")
-    curses.tigetnum("colors")
+    os.environ["TERM"] = "xterm-256color"
 
     p = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
 
@@ -46,6 +46,7 @@ def client_main(args=None):
     ns = p.parse_args(args)
 
     logging.basicConfig(filename=ns.log_file, level=logging.DEBUG)
+    logger.info("Whiteshoe Client v0.0.1")
 
     options = collections.OrderedDict()
     for option_str in ns.option_strings:
@@ -99,18 +100,14 @@ class Scene(object):
         self.cleanup()
         return False # always propogate exceptions.
 
+COLOUR_PAIRS = {}
 
 def curses_setup(stdscr):
     curses.curs_set(2) # block cursor
     curses.use_default_colors()
-    curses.init_pair(1, curses.COLOR_GREEN, -1)
-    curses.init_pair(2, curses.COLOR_RED, -1)
-    curses.init_pair(3, curses.COLOR_BLACK, -1)
-    curses.init_pair(4, curses.COLOR_YELLOW, -1)
-    curses.init_pair(5, curses.COLOR_MAGENTA, -1)
-    curses.init_pair(6, curses.COLOR_CYAN, -1)
-    curses.init_pair(7, curses.COLOR_WHITE, -1)
-    curses.init_pair(8, curses.COLOR_BLUE, -1)
+    for i in range(1,257):
+        curses.init_pair(i, i - 1, -1)
+        COLOUR_PAIRS[i] = curses.color_pair(i)
     stdscr.nodelay(1)
 
 class SetupScene(Scene):
@@ -260,21 +257,21 @@ class ScoreScene(object):
     def shutdown(self):
         pass
 
-def cursify(character, colour, flags=()):
+def cursify(character, colour, flags=None):
     # Then turn that collection of settings into actual curses stuff.
     # TODO this probably needs processing and rounding to transform
     # into majorcolor, minorcolor, colorblind, and monocolor mode.
     if colour == "purple":
-        colour_pair = 5
+        colour_pair = 6
     elif colour == "green":
         colour_pair = 3
     elif colour == "white":
-        colour_pair = 0
+        colour_pair = 16
     else:
-        colour_pair = 2 # TODO complain
+        colour_pair = 1 # TODO complain
 
-    attr = curses.color_pair(colour_pair)
-    if "bold" in flags:
+    attr = COLOUR_PAIRS[colour_pair]
+    if flags is not None and "bold" in flags:
         attr |= curses.A_BOLD
 
     return character, attr
@@ -284,6 +281,10 @@ class GameScene(Scene):
     def __init__(self, namespace, network):
         self.namespace = namespace
         self.network = network
+
+        self._command_mode = False
+        self._messages = []
+        self._draw_cache = {}
 
         self.data = self.namespace.local_data = {}
 
@@ -350,6 +351,36 @@ class GameScene(Scene):
         if 'player_location' in self.network.store:
             self.draw_viewport()
 
+        if self._command_mode:
+            typed = self._command
+            chr, attr = cursify("# " + typed, "green")
+            self.viewport.addstr(0,0, chr, attr)
+
+        for event in self.network.events:
+            if event[0] == "message":
+                self._messages.append(event[1])
+
+        for i, message in enumerate(self._messages):
+            chr, attr = cursify(message, "purple")
+
+            self.viewport.addstr(i + 1,0, chr, attr)
+
+        # Move cursor to your player.
+        if 'player_location' in self.network.store:
+            world, x, y, z = self.network.store['player_location']
+            # TODO obviously with a level bigger than window size
+            # we can't just rip the coordinates straight out.
+            try:
+                self.viewport.move(y,x)
+            except curses.error:
+                # TODO out of bounds cursor location probably. Need to
+                # notice and catch and stuff.
+                pass
+
+        # Call nout refresh on all windows.
+        self.viewport.noutrefresh()
+
+        # Then draw all changes.
         curses.doupdate()
 
     def draw_viewport(self):
@@ -365,45 +396,46 @@ class GameScene(Scene):
         map_data = self.network.store['known_universe'][world]
 
         for coord, entities in map_data.items():
-            x, y, z = coord
+            self.draw_tile(coord, entities)
 
-            # There might be multiple entities in a single coordinate
-            # So we need to determine which has the highest priority.
-            # Generally, a monster/player is more important than an item
-            # An item is more important than a dungeon feature (fountain etc.)
-            # A dungeon feature is more important than empty floor, etc.
+    def draw_tile(self, coord, entities):
+        x, y, z = coord
 
-            # If there's only one entity though, then we don't have to worry
-            # about precedence.
+        # There might be multiple entities in a single coordinate
+        # So we need to determine which has the highest priority.
+        # Generally, a monster/player is more important than an item
+        # An item is more important than a dungeon feature (fountain etc.)
+        # A dungeon feature is more important than empty floor, etc.
 
-            # First, the debug case, a coordinate with empty entities.
-            # This is clearly a bug, a coordinate has to contain something.
+        # If there's only one entity though, then we don't have to worry
+        # about precedence.
 
-            # Default settings. A green '?' indicates an unknown character.
+        # First, the debug case, a coordinate with empty entities.
+        # This is clearly a bug, a coordinate has to contain something.
 
+        # Default settings. A green '?' indicates an unknown character.
+
+        character = '?'
+        flags = set()
+        colour = "green"
+
+        if not entities:
             character = '?'
+            flags = set(["bold"])
+            colour = "purple"
+        elif entities:
+            entity = entities[-1]
+
+            character = entity.character
             flags = set()
-            colour = "green"
+            colour = entity.colour
 
-            if not entities:
-                character = '?'
-                flags = set(["bold"])
-                colour = "purple"
-            elif entities:
-                entity = entities[-1]
-
-                character = entity.character
-                flags = set()
-                colour = entity.colour
-
-            character, attr = cursify(character, colour, flags)
-            try:
-                self.viewport.addstr(y,x, character, attr)
-            except curses.error:
-                # Really need to complain about this in the log.
-                pass
-
-        self.viewport.noutrefresh()
+        character, attr = cursify(character, colour, flags)
+        try:
+            self.viewport.addstr(y,x, character, attr)
+        except curses.error:
+            # Ignore all the errors.
+            pass
 
     def _draw_bottom_infobar(self):
         self.infobar.clear()
@@ -578,9 +610,28 @@ class GameScene(Scene):
             #ord('o'): (constants.CMD_FIRE, constants.SMALL_SLIME),
             #ord('O'): (constants.CMD_FIRE, constants.BIG_SLIME),
         }
-        if c == ord('c'):
+        if self._command_mode:
+            if 0 <= c <= 255:
+                character = chr(c)
+                if character == "\n":
+                    event = ('command', self._command)
+                    self.network.remote_event(event)
+                    self._command_mode = False
+                else:
+                    self._command += character
+
+            elif c == 263:
+                # BACKSPACE
+                self._command = self._command[:-1]
+
+        elif c == ord('c'):
             consolescene = ConsoleScene(self.namespace, self.network)
             raise NewScene(consolescene)
+
+        elif c == ord('#'):
+            # Now entering command mode.
+            self._command_mode = True
+            self._command = ''
 
         elif c in cmds:
             self.network.remote_event(cmds[c])
@@ -746,10 +797,20 @@ class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
             p.disconnect_code = reason
 
             self._send_packets(p)
+            try:
+                self.socket.close()
+            except socket.error:
+                # Who cares, we're shutting down.
+                # TODO just check that we're not breaking stuff.
+                pass
 
     @property
     def events(self):
-        with self._lock:
+        if self._thread_running:
+            with self._lock:
+                out = self._events
+                self._events = []
+        else:
             out = self._events
             self._events = []
         return out
@@ -759,11 +820,14 @@ class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
 
     @property
     def store(self):
-        with self._lock:
-            return self._store.copy()
+        if self._thread_running:
+            with self._lock:
+                return self._store.copy()
+        else:
+            return self._store
 
     def _ticklet(self):
-        rlist, wlist, xlist = select.select((self.socket,),(),(),0.1)
+        rlist, wlist, xlist = select.select((self.socket,),(),(),0.01)
         for rs in rlist:
             if self.socket_type == 'udp':
                 data, addr = rs.recvfrom(4096)
