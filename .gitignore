@@ -71,3 +71,6 @@ nosetests.xml
 
 *_pb2.py
 whiteshoe*.tar*
+
+# ignore log files
+*.log
