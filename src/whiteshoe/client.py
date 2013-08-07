@@ -14,6 +14,7 @@ import threading
 import collections
 import operator
 import json
+import multiprocessing
 
 try:
     import cPickle as pickle
@@ -28,18 +29,23 @@ import utility
 logger = logging.getLogger(__name__)
 
 def client_main(args=None):
-    curses.setupterm("xterm-color256")
+    # TODO Check whether the terminal supports majorcolour, minorcolour
+    # or nocolour.
+    # Also ask at some point about colourblindness
+    # Probably also need a unicode check as well.
+    curses.setupterm("xterm-256color")
     curses.tigetnum("colors")
 
     p = argparse.ArgumentParser(argument_default=argparse.SUPPRESS)
 
     p.add_argument('-c','--connect',default="::1",dest='ipaddr')
-    p.add_argument('-n','--name')
-    p.add_argument('-t','--team',type=int)
     p.add_argument('--socket-type',default='tcp')
+    p.add_argument('--log-file',default='client.log')
     p.add_argument('-o',dest='option_strings',action='append',default=[])
 
     ns = p.parse_args(args)
+
+    logging.basicConfig(filename=ns.log_file, level=logging.DEBUG)
 
     options = collections.OrderedDict()
     for option_str in ns.option_strings:
@@ -57,9 +63,9 @@ def client_main(args=None):
     network = MultiHackClientNetwork()
     network.connect((ns.ipaddr, None), socket_type=ns.socket_type)
 
-    #network.join_game((ns.connect, None), autojoin=True)
-    #scene = GameScene(ns, network)
-    scene = SetupScene(ns, network)
+    scene = GameScene(ns, network)
+
+    network.join_game(autojoin=True)
 
     while True:
         try:
@@ -254,6 +260,25 @@ class ScoreScene(object):
     def shutdown(self):
         pass
 
+def cursify(character, colour, flags=()):
+    # Then turn that collection of settings into actual curses stuff.
+    # TODO this probably needs processing and rounding to transform
+    # into majorcolor, minorcolor, colorblind, and monocolor mode.
+    if colour == "purple":
+        colour_pair = 5
+    elif colour == "green":
+        colour_pair = 3
+    elif colour == "white":
+        colour_pair = 0
+    else:
+        colour_pair = 2 # TODO complain
+
+    attr = curses.color_pair(colour_pair)
+    if "bold" in flags:
+        attr |= curses.A_BOLD
+
+    return character, attr
+
 
 class GameScene(Scene):
     def __init__(self, namespace, network):
@@ -289,6 +314,7 @@ class GameScene(Scene):
 
     def cleanup(self):
         pass
+
     def shutdown(self):
         pass
 
@@ -302,40 +328,6 @@ class GameScene(Scene):
         if 'topleft' not in self.data:
             self.data['topleft'] = [0,0]
 
-        self.infobar_type = 'bottom'
-        assert self.infobar_type in ('bottom', 'rightside')
-
-        if self.infobar_type == 'rightside':
-            viewport, infobar = self._rightside_infobar(stdscr)
-        elif self.infobar_type == 'bottom':
-            viewport, infobar = self._bottom_infobar(stdscr)
-
-        self.viewport = stdscr.subwin(*viewport)
-        self.infobar = stdscr.subwin(*infobar)
-
-        # Debug
-        #self.viewport.bkgd("v")
-        #self.sidebar.bkgd("s")
-        #self.infobar.border()
-        #self.viewport.border()
-
-        #stdscr.border()
-
-    def _rightside_infobar(self, stdscr):
-        max_y, max_x = stdscr.getmaxyx()
-        INFOBAR_WIDTH = 20
-
-        viewport_topleft = (0,0) # y,x
-        viewport_linescols = (max_y , max_x - INFOBAR_WIDTH)
-        viewport = viewport_linescols + viewport_topleft
-
-        infobar_topleft = (0,max_x - INFOBAR_WIDTH)
-        infobar_linescols = (max_y, INFOBAR_WIDTH)
-        infobar = infobar_linescols + infobar_topleft
-
-        return viewport, infobar
-
-    def _bottom_infobar(self, stdscr):
         max_y, max_x = stdscr.getmaxyx()
         INFOBAR_HEIGHT = 2
 
@@ -349,19 +341,31 @@ class GameScene(Scene):
 
         infobar = infobar_linescols + infobar_topleft
 
-        return viewport, infobar
+        self.viewport = stdscr.subwin(*viewport)
+        self.infobar = stdscr.subwin(*infobar)
 
     def tick(self, stdscr):
         self.network.update()
+
+        if 'player_location' in self.network.store:
+            self.draw_viewport()
+
+        curses.doupdate()
 
     def draw_viewport(self):
         location = self.network.store['player_location']
         world, x, y, z = location
 
-        map_data = self.network.store['universe'][world]
+        known_universe = self.network.store.get('known_universe')
+
+        if known_universe is None:
+            # Might complain about this later. Right now, wait a bit.
+            return
+
+        map_data = self.network.store['known_universe'][world]
 
         for coord, entities in map_data.items():
-            x, y = coord
+            x, y, z = coord
 
             # There might be multiple entities in a single coordinate
             # So we need to determine which has the highest priority.
@@ -374,43 +378,32 @@ class GameScene(Scene):
 
             # First, the debug case, a coordinate with empty entities.
             # This is clearly a bug, a coordinate has to contain something.
+
+            # Default settings. A green '?' indicates an unknown character.
+
+            character = '?'
+            flags = set()
+            colour = "green"
+
             if not entities:
+                character = '?'
+                flags = set(["bold"])
+                colour = "purple"
+            elif entities:
+                entity = entities[-1]
 
+                character = entity.character
+                flags = set()
+                colour = entity.colour
 
-            if objects:
-                for o in objects:
-                    display_chr, colour = self.display_character(o)
-                try:
-                    self.viewport.addstr(y,x,display_chr, colour)
-                except curses.error:
-                    pass
-            elif self.data.get('empty-?'):
-                # A bold purple ? mark indicates a coordinate that is
-                # in the known_world, but has no objects, meaning it has
-                # been explicitly cleared by the network.
-                #
-                # This is an artifact that may or may not be present
-                # as stuff changes.
-                purple = curses.color_pair(5) | curses.A_BOLD
-                self.viewport.addstr(y,x,"?",purple)
+            character, attr = cursify(character, colour, flags)
+            try:
+                self.viewport.addstr(y,x, character, attr)
+            except curses.error:
+                # Really need to complain about this in the log.
                 pass
 
-        # Cursor on player
-        self.viewport.move(screen_y,screen_x)
         self.viewport.noutrefresh()
-
-    def draw_infobar(self):
-        assert self.infobar_type in ('rightside', 'bottom')
-
-        if self.infobar_type == 'bottom':
-            self._draw_bottom_infobar()
-        elif self.infobar_type == 'rightside':
-            self._draw_rightside_infobar()
-
-    def _draw_rightside_infobar(self):
-        visible = self.network.get_visible()
-        my_coord, player = self.network.find_me()
-        self.infobox.border()
 
     def _draw_bottom_infobar(self):
         self.infobar.clear()
@@ -534,81 +527,65 @@ class GameScene(Scene):
         return display_chr, colour
 
     def input(self, stdscr, c):
-        #print(c)
         cmds = {
-            curses.KEY_DOWN: (constants.CMD_MOVE, constants.DOWN),
-            curses.KEY_UP: (constants.CMD_MOVE, constants.UP),
-            curses.KEY_LEFT: (constants.CMD_MOVE, constants.LEFT),
-            curses.KEY_RIGHT: (constants.CMD_MOVE, constants.RIGHT),
+            #curses.KEY_DOWN: ("move", [constants.Direction.down]),
+            #curses.KEY_UP: ("move", [constants.Direction.up]),
+            #curses.KEY_LEFT: ("move", [constants.Direction.left]),
+            #curses.KEY_RIGHT: ("move", [constants.Direction.right]),
             # vim keys
-            ord('j'): (constants.CMD_MOVE, constants.DOWN),
-            ord('h'): (constants.CMD_MOVE, constants.LEFT),
-            ord('k'): (constants.CMD_MOVE, constants.UP),
-            ord('l'): (constants.CMD_MOVE, constants.RIGHT),
+            ord('j'): ("move", (constants.Direction.south,)),
+            ord('h'): ("move", (constants.Direction.west,)),
+            ord('k'): ("move", (constants.Direction.north,)),
+            ord('l'): ("move", (constants.Direction.east,)),
 
             # wasd
-            ord('w'): (constants.CMD_MOVE, constants.UP),
-            ord('a'): (constants.CMD_MOVE, constants.LEFT),
-            ord('s'): (constants.CMD_MOVE, constants.DOWN),
-            ord('d'): (constants.CMD_MOVE, constants.RIGHT),
+            #ord('w'): ("move", [constants.Direction.up]),
+            #ord('a'): ("move", [constants.Direction.left]),
+            #ord('s'): ("move", [constants.Direction.down]),
+            #ord('d'): ("move", [constants.Direction.right]),
 
             # Looking directions, arrow keys with SHIFT held down
-            curses.KEY_SF: (constants.CMD_LOOK, constants.DOWN),
-            curses.KEY_SR: (constants.CMD_LOOK, constants.UP),
-            curses.KEY_SRIGHT: (constants.CMD_LOOK, constants.RIGHT),
-            curses.KEY_SLEFT: (constants.CMD_LOOK, constants.LEFT),
+            #curses.KEY_SF: (constants.CMD_LOOK, constants.DOWN),
+            #curses.KEY_SR: (constants.CMD_LOOK, constants.UP),
+            #curses.KEY_SRIGHT: (constants.CMD_LOOK, constants.RIGHT),
+            #curses.KEY_SLEFT: (constants.CMD_LOOK, constants.LEFT),
 
             #
-            ord('J'): (constants.CMD_LOOK, constants.DOWN),
-            ord('H'): (constants.CMD_LOOK, constants.LEFT),
-            ord('K'): (constants.CMD_LOOK, constants.UP),
-            ord('L'): (constants.CMD_LOOK, constants.RIGHT),
+            #ord('J'): (constants.CMD_LOOK, constants.DOWN),
+            #ord('H'): (constants.CMD_LOOK, constants.LEFT),
+            #ord('K'): (constants.CMD_LOOK, constants.UP),
+            #ord('L'): (constants.CMD_LOOK, constants.RIGHT),
 
             # wasd looking
-            ord('W'): (constants.CMD_LOOK, constants.UP),
-            ord('A'): (constants.CMD_LOOK, constants.LEFT),
-            ord('S'): (constants.CMD_LOOK, constants.DOWN),
-            ord('D'): (constants.CMD_LOOK, constants.RIGHT),
+            #ord('W'): (constants.CMD_LOOK, constants.UP),
+            #ord('A'): (constants.CMD_LOOK, constants.LEFT),
+            #ord('S'): (constants.CMD_LOOK, constants.DOWN),
+            #ord('D'): (constants.CMD_LOOK, constants.RIGHT),
 
-            ord('f'): (constants.CMD_FIRE, constants.N1),
-            ord('F'): (constants.CMD_FIRE, constants.N2),
+            #ord('f'): (constants.CMD_FIRE, constants.N1),
+            #ord('F'): (constants.CMD_FIRE, constants.N2),
 
-            ord('1'): (constants.CMD_FIRE, constants.N1),
-            ord('2'): (constants.CMD_FIRE, constants.N2),
-            ord('3'): (constants.CMD_FIRE, constants.N3),
-            ord('4'): (constants.CMD_FIRE, constants.N4),
-            ord('5'): (constants.CMD_FIRE, constants.N5),
-            ord('6'): (constants.CMD_FIRE, constants.N6),
-            ord('7'): (constants.CMD_FIRE, constants.N7),
-            ord('8'): (constants.CMD_FIRE, constants.N8),
-            ord('9'): (constants.CMD_FIRE, constants.N9),
+            #ord('1'): (constants.CMD_FIRE, constants.N1),
+            #ord('2'): (constants.CMD_FIRE, constants.N2),
+            #ord('3'): (constants.CMD_FIRE, constants.N3),
+            #ord('4'): (constants.CMD_FIRE, constants.N4),
+            #ord('5'): (constants.CMD_FIRE, constants.N5),
+            #ord('6'): (constants.CMD_FIRE, constants.N6),
+            #ord('7'): (constants.CMD_FIRE, constants.N7),
+            #ord('8'): (constants.CMD_FIRE, constants.N8),
+            #ord('9'): (constants.CMD_FIRE, constants.N9),
 
-            ord('o'): (constants.CMD_FIRE, constants.SMALL_SLIME),
-            ord('O'): (constants.CMD_FIRE, constants.BIG_SLIME),
+            #ord('o'): (constants.CMD_FIRE, constants.SMALL_SLIME),
+            #ord('O'): (constants.CMD_FIRE, constants.BIG_SLIME),
         }
         if c == ord('c'):
             consolescene = ConsoleScene(self.namespace, self.network)
             raise NewScene(consolescene)
-        elif c == 9:
-            # <TAB> character
-            raise NewScene(ScoreScene(self.namespace, self.network))
 
         elif c in cmds:
-            cmd = cmds[c]
-            try:
-                self.network.send_command(cmd[0], cmd[1])
-            except NotInGame:
-                # TODO Put notification on message buffer
-                pass
+            self.network.remote_event(cmds[c])
 
 class _MultiHackClientNetworkPacketHandler(object):
-    def _store_packet(self, packet):
-        key = pickle.loads(packet.key)
-        value = pickle.loads(packet.value)
-
-        with self._lock:
-            self._store[key] = value
-
     def _event_packet(self, packet):
         event = pickle.loads(packet.event)
         with self._lock:
@@ -618,12 +595,15 @@ class _MultiHackClientNetworkPacketHandler(object):
         pass
     def _disconnect_packet(self, packet):
         raise ServerDisconnect
+    def _picklediff_packet(self, packet):
+        key = pickle.loads(packet.key)
+        self._store.feed(key, packet.diff)
 
 class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
     def __init__(self):
         self.handlers = {
-            constants.Payload.store: self._store_packet,
             constants.Payload.event: self._event_packet,
+            constants.Payload.picklediff: self._picklediff_packet,
             constants.KEEP_ALIVE: self._keep_alive_packet,
             constants.DISCONNECT: self._disconnect_packet,
         }
@@ -632,8 +612,12 @@ class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
         self.socket_type = None
 
         self._events = []
-        self._store = {}
-        self._remote_store = {}
+
+        # This is what the server is sending us.
+        self._store = utility.DifflingReader()
+
+        # This is what we're storing remotely, at the server.
+        self._remote_store = utility.DifflingAuthor(aggressive=True)
 
         self.keepalive_timer = utility.Stopwatch()
         self.lastheard_timer = utility.Stopwatch()
@@ -645,14 +629,13 @@ class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
         self._thread_running = False
 
     def remote_set(self, key, value):
-        if key in self._remote_store and self._remote_store[key] == value:
-            # Do nothing.
-            return
-        else:
+        self._remote_store[key] = value
+
+        for key, diff in self._remote_store.get_changes():
             p = packet_pb2.Packet()
-            p.payload_type = constants.Payload.store
-            p.key = pickle.dumps(key, -1)
-            p.value = pickle.dumps(value, -1)
+            p.payload_type = constants.Payload.picklediff
+            p.key = pickle.dumps(key, pickle.HIGHEST_PROTOCOL)
+            p.diff = diff
             self._send_packets(p)
 
     def remote_event(self, event):
@@ -686,6 +669,7 @@ class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
                 if not self._thread_running:
                     break
                 self.update()
+
 
     def connect(self, addr, socket_type='tcp'):
         assert socket_type in ('tcp','udp')

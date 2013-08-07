@@ -6,6 +6,12 @@ import logging
 import random
 import re
 import struct
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
+
+import bsdiff4
 
 import constants
 
@@ -336,3 +342,95 @@ def stream_unwrap(data):
             data = data[next_chunk_size:]
 
     return unpacked, data
+
+def quick_pickle(obj):
+    return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
+
+def quick_unpickle(binstr):
+    return pickle.loads(binstr)
+
+class DifflingAuthor(object):
+    def __init__(self, aggressive=False):
+        self._items = {}
+        self._pickled = {}
+        self._changed = set()
+        self.aggressive = aggressive
+
+    def __setitem__(self, key, value):
+        if key not in self._items:
+            self._pickled[key] = quick_pickle(None)
+
+        self._items[key] = value
+
+        self.hint(key)
+
+    def hint(self, key):
+        # Hint that the value associated with the key has changed.
+        self._changed.add(key)
+
+    def get_changes(self):
+        changes = []
+        # Aggressive is pickle and check every time get_changes is called.
+        # Probably only good for debugging.
+        if not self.aggressive:
+            changed = list(self._changed)
+        else:
+            changed = list(self._items)
+
+        self._changed.clear()
+
+        for key in changed:
+            old_state = self._pickled[key]
+            current_state = quick_pickle(self._items[key])
+
+            if old_state == current_state:
+                # Misleading hint. Maybe whine about it. But do nothing more.
+                # but only whine if we're not aggressive.
+                continue
+
+            # Otherwise, since we're calculating the changes, set the
+            # current state.
+            self._pickled[key] = current_state
+            diff_bytes = bsdiff4.diff(old_state, current_state)
+            changes.append((key, diff_bytes))
+
+        return changes
+
+class DifflingReader(object):
+    def __init__(self):
+        self._items = {}
+        self._pickled = {}
+
+    def copy(self):
+        return self._items.copy()
+
+    def feed(self, key, diff):
+        if key not in self._items:
+            self._pickled[key] = quick_pickle(None)
+
+        old_state = self._pickled[key]
+        new_state = bsdiff4.patch(old_state, diff)
+
+        self._pickled[key] = new_state
+        self._items[key] = quick_unpickle(new_state)
+
+    def _feed_list(self, L):
+        for key, diff in L:
+            self.feed(key, diff)
+
+    def __getitem__(self, key):
+        return self._items[key]
+
+def test_diffling():
+    da = DifflingAuthor()
+    dr = DifflingReader()
+
+    da["key"] = test1 = "The patching stuff appears to be working."
+
+    dr._feed_list(da.get_changes())
+    assert dr["key"] == test1
+
+    da["key"] = test2 = "The patching stuff continues to work. Probably."
+
+    dr._feed_list(da.get_changes())
+    assert dr["key"] == test2

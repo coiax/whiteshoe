@@ -182,11 +182,11 @@ message Packet {
     // Arbitary key->values, packed with each key followed by a value
     repeated string keyvalues = 1001;
 
-    // 10 - store (s<->c)
-    optional bytes key = 1200;
-    optional bytes value = 1201;
-
     // 11 - event (s<->c)
     optional bytes event = 1300;
+
+    // 12 - picklediff (s<->c)
+    optional bytes key = 1400;
+    optional bytes diff = 1401;
 
 }

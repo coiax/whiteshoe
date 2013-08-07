@@ -1,5 +1,8 @@
 from __future__ import print_function
 
+# This is a test in the ability to have 256 colors in a terminal
+# and actually display them.
+
 import curses
 import os
 import random

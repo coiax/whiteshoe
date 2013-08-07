@@ -1,13 +1,20 @@
 import random
 import collections
 import json
-import pickle
+try:
+    import cPickle as pickle
+except ImportError:
+    import pickle
 
 import utility
 import constants
 import packet_pb2
 import maps
 import vision
+
+# use of packet_pb2 is "deprecated" TODO find ways of detecting this.
+# probably grep. TODO just switch everything eventually.
+wire = packet_pb2
 
 modes = {}
 
@@ -1037,12 +1044,8 @@ def pack_attribute(obj_attr):
     return attribute
 
 class _MultiHackEventHandler(object):
-    def _do_move(self, player_state, event_flags):
-        if player_state in self.players.values():
-            pass
-        else:
-            player_id = player_state
-            player_state = self.players[player_id]
+    def _do_move(self, player_id, event_flags=()):
+        player_state = self.players[player_id]
 
         direction = set(event_flags) & set(constants.MULTIHACK_DIRECTIONS)
         assert len(direction) == 1
@@ -1076,22 +1079,41 @@ class _MultiHackEventHandler(object):
         new_x, new_y = x + diff[0], y + diff[1]
         new_z = z
 
-        new_location_entities = world[new_x, new_y, new_z]
+
+        move_happening = True
+        try:
+            new_location_entities = world[new_x, new_y, new_z]
+        except KeyError:
+            # This is a bug, all maps should be bordered by unpassable,
+            # undiggable walls or something to that effect.
+            msg = "{} attempted to move to non existent coord {}"
+            logger.warning(msg.format(player_id, (new_x, new_y, new_z)))
+            move_happening = False
         for entity in new_location_entities:
             if "walkable" not in entity.flags:
                 # Special case walking into walls and closed doors.
-                print("bump")
+                #print("bump")
+                move_happening = False
                 break #TODO implement bumping into things
-        else:
+
+        if move_happening:
             current_location_entities.remove(player_entity)
             new_location_entities.append(player_entity)
             # TODO obviously, we'll now check to see if you fall into the moat
             # or the lava.
             player_state['location'] = (world_name, new_x, new_y, new_z)
 
-            print(player_state['location'])
+            #print(player_state['location'])
 
-Entity = collections.namedtuple('Entity','id name flags')
+Entity = collections.namedtuple('Entity','id name flags character colour')
+
+def quick_pickle(obj):
+    """Pickles obj with the highest availible format, returning as a
+       binary string."""
+    return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
+
+def quick_unpickle(binstr):
+    return pickle.loads(binstr)
 
 @gamemode
 class MultiHack(_MultiHackEventHandler):
@@ -1119,9 +1141,12 @@ class MultiHack(_MultiHackEventHandler):
                 world[x,y,0] = entities = []
                 entity_id = utility.get_id('entity')
                 if self.random.random() < 0.35:
-                    entity = Entity(entity_id, 'wall', set())
+                    entity = Entity(entity_id, 'wall', set(),
+                                    '#', 'white')
                 else:
-                    entity = Entity(entity_id, 'floor', set(['walkable']))
+                    entity = Entity(entity_id, 'floor', set(['walkable']),
+                                    '.', 'white')
+
                     self._empties.append((x,y))
                 entities.append(entity)
 
@@ -1133,15 +1158,51 @@ class MultiHack(_MultiHackEventHandler):
         assert player_id not in self.players
         self.players[player_id] = player_state = {}
 
-        player_state['client_store'] = {}
+        # The client store is where THEY give us information.
+        player_state['client_store'] = utility.DifflingReader()
+
+        # The remote information is what we're sending to them.
+        # TODO aggressive is, well, aggressive and should only be enabled
+        # while we're debugging.
+
+        player_state['remote_store'] = utility.DifflingAuthor(aggressive=True)
         entity_x, entity_y = self._empties.pop()
 
         player_state['location'] = ('level1', entity_x, entity_y, 0)
         player_state['entity_id'] = entity_id = utility.get_id('entity')
 
-        entity = Entity(entity_id, 'player', set())
+        entity = Entity(entity_id, 'player', set(), '@', 'white')
 
         self.universe['level1'][entity_x, entity_y, 0].append(entity)
+
+        # TODO later, we'll give them incomplete information. Right now
+        # GET SOMETHING WORKING
+        remote_store = player_state['remote_store']
+
+        remote_store['known_universe'] = self.universe
+        remote_store['player_location'] = player_state['location']
+
+        return self._crappy_all_store()
+
+    def _crappy_store(self, player_id):
+        # Returns a number of key/value packets for storage. This is really
+        # lame and is definitely a hack so FIXME
+        packets = []
+        remote_store = self.players[player_id]['remote_store']
+        for key, diff in remote_store.get_changes():
+            p = wire.Packet()
+            p.payload_type = constants.Payload.picklediff
+            p.key = quick_pickle(key)
+            p.diff = diff
+
+            packets.append((player_id,p))
+        return packets
+
+    def _crappy_all_store(self):
+        packets = []
+        for player_id in self.players:
+            packets.extend(self._crappy_store(player_id))
+        return packets
 
     def player_leave(self, player_id):
         assert player_id in self.players
@@ -1159,18 +1220,19 @@ class MultiHack(_MultiHackEventHandler):
 
         del self.players[player_id]
 
+        return self._crappy_all_store()
+
     def handle(self, packet, player_id):
         assert player_id in self.players
         player_state = self.players[player_id]
 
-        if packet.payload_type == 10: #FIXME magic numbers, this is STORE
+        if packet.payload_type == constants.Payload.picklediff:
             key = pickle.loads(packet.key)
-            value = pickle.loads(packet.value)
-            assert hash(key)
-        
-            player_state['client_store'][key] = value
+            diff = packet.diff
 
-        elif packet.payload_type == 11:
+            player_state['client_store'].feed(key, diff)
+
+        elif packet.payload_type == constants.Payload.event:
             event = pickle.loads(packet.event)
 
             handlers = {
@@ -1178,9 +1240,9 @@ class MultiHack(_MultiHackEventHandler):
             }
 
             handler = handlers[event[0]]
-            handler(*event[1:])
+            handler(player_id, *event[1:])
 
-        return []
+        return self._crappy_all_store()
 
     tick = None
 

@@ -55,15 +55,6 @@ N9 = 9
 SMALL_SLIME = "small-slime"
 BIG_SLIME = "big-slime"
 
-
-# Check for duplicate values
-assert sorted(vars().values()) == sorted(set(vars().values())) # duplicates
-
-_constants = list(vars().items())
-_constants.sort(key=operator.itemgetter(0))
-_constants_table = [c[1] for c in _constants]
-del _constants
-
 # Non-network constants after this point
 
 BANNER = """Whiteshoe {version}""".format(version='0.0.0')
@@ -115,8 +106,8 @@ GAME_MESSAGE = 4
 KEYVALUE = 5
 
 class Payload(IntEnum):
-    store = 10
     event = 11
+    picklediff = 12
 
 DISCONNECT_SHUTDOWN = 1
 DISCONNECT_KICKED = 2
@@ -138,34 +129,29 @@ STATUS_GAMERESUME = 9
 KEYVALUE_SCORES = "scores"
 KEYVALUE_ENHANCED_SCORES = "scores+"
 
-DIRECTIONS = (UP, RIGHT, DOWN, LEFT)
-MULTIHACK_DIRECTIONS = (UP, DOWN, NORTH, NORTHEAST, EAST, SOUTHEAST,
-                        SOUTH, SOUTHWEST, WEST, NORTHWEST)
+#DIRECTIONS = (UP, RIGHT, DOWN, LEFT)
+MULTIHACK_DIRECTIONS = (
+    Direction.up,
+    Direction.down,
+    Direction.north,
+    Direction.northeast,
+    Direction.east,
+    Direction.southeast,
+    Direction.south,
+    Direction.southwest,
+    Direction.west,
+    Direction.northwest
+)
 
 DIFFS = {
-    UP: (0, -1),
-    NORTHEAST: (1,-1),
-    NORTHWEST: (-1,-1),
-    DOWN: (0, 1),
-    SOUTHEAST: (1,1),
-    SOUTHWEST: (-1,1),
-    LEFT: (-1, 0),
-    RIGHT: (1, 0),
-
-    NORTH: (0, -1),
-    SOUTH: (0, 1),
-    EAST: (-1, 0),
-    WEST: (1,0),
-
-}
-
-
-
-ADJACENT = {
-    UP: (LEFT, UP, RIGHT, NORTHEAST, NORTHWEST),
-    DOWN: (LEFT, DOWN, RIGHT, SOUTHEAST, SOUTHWEST),
-    LEFT: (UP, LEFT, DOWN, NORTHWEST, SOUTHWEST),
-    RIGHT: (UP, RIGHT, DOWN, NORTHEAST, SOUTHEAST),
+    Direction.north: (0, -1),
+    Direction.northeast: (1,-1),
+    Direction.east: (1, 0),
+    Direction.southeast: (1,1),
+    Direction.south: (0, 1),
+    Direction.southwest: (-1,1),
+    Direction.west: (-1,0),
+    Direction.northwest: (-1,-1),
 }
 
 WALLS = (OBJ_WALL, OBJ_HORIZONTAL_WALL, OBJ_VERTICAL_WALL, OBJ_CORNER_WALL)

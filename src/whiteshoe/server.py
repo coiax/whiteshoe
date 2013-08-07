@@ -31,11 +31,16 @@ def server_main(args=None):
     p = argparse.ArgumentParser()
     p.add_argument('-v','--vision',default='cone')
     p.add_argument('-m','--map',default='depth_first')
-    p.add_argument('-M','--mode',default='ffa')
+    p.add_argument('-M','--mode',default='multihack')
     p.add_argument('-q','--quiet',action='store_true',default=False)
-    p.add_argument('-d','--debug',action='store_true')
+    p.add_argument('--no-debug',action='store_false',default=True,dest='debug')
+    p.add_argument('--log-file',default='server.log')
     p.add_argument('-o',dest='options',action='append',default=[])
+
     ns = p.parse_args(args)
+
+    logging.basicConfig(filename=ns.log_file, level=logging.DEBUG)
+    logger.info("Whiteshoe v0.0.1")
 
     options = collections.OrderedDict()
     for option_string in ns.options:
@@ -90,6 +95,7 @@ class Server(object):
         self.udp_socket.bind(('',self.port))
         self.tcp_socket.bind(('',self.port))
         self.tcp_socket.listen(self.tcp_backlog)
+        logger.info("Server listening on port {}".format(self.port))
 
         while True:
             try:
