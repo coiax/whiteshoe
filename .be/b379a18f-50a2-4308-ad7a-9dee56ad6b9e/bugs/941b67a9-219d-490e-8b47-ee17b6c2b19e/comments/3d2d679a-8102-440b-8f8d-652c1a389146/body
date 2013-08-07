@@ -1,3 +1,0 @@
-Blowing up a wall segment doesn't allow you to see beyond that wall segment
-(because only the segment's cell is marked dirty, not the player), until
-the player moves or looks in a different direction.

@@ -1,2 +1,0 @@
-A slightly less important bug now that TCP connections are the default
-ones (and thus, the server shutting down servers the TCP connections.)
