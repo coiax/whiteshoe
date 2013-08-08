@@ -284,6 +284,7 @@ class GameScene(Scene):
 
         self._command_mode = False
         self._messages = []
+        self._message_timer = utility.Stopwatch()
         self._draw_cache = {}
 
         self.data = self.namespace.local_data = {}
@@ -359,6 +360,16 @@ class GameScene(Scene):
         for event in self.network.events:
             if event[0] == "message":
                 self._messages.append(event[1])
+                if not self._message_timer.running:
+                    self._message_timer.start()
+
+        if self._messages and self._message_timer.elapsed_seconds > 10:
+            self._messages.pop(0)
+            if self._messages:
+                self._message_timer.restart()
+            else:
+                self._message_timer.stop()
+
 
         for i, message in enumerate(self._messages):
             chr, attr = cursify(message, "purple")
@@ -424,11 +435,14 @@ class GameScene(Scene):
             flags = set(["bold"])
             colour = "purple"
         elif entities:
+            # TODO for now, we'll draw the last one in the list.
             entity = entities[-1]
 
-            character = entity.character
-            flags = set()
-            colour = entity.colour
+            id, type = entity
+
+            character = self.network.store['entity_data'][type]['symbol']
+            colour = self.network.store['entity_data'][type]['colour']
+            flags = ()
 
         character, attr = cursify(character, colour, flags)
         try:

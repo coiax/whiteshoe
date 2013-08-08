@@ -1069,7 +1069,8 @@ class _MultiHackEventHandler(object):
         current_location_entities = world[x,y,z]
         player_entity_id = player_state['entity_id']
         for entity in current_location_entities:
-            if entity.id == player_entity_id:
+            entity_id, entity_type = entity
+            if entity_id == player_entity_id:
                 player_entity = entity
                 break
         else:
@@ -1096,7 +1097,9 @@ class _MultiHackEventHandler(object):
             new_location_entities = ()
 
         for entity in new_location_entities:
-            if "walkable" not in entity.flags:
+            entity_id, entity_type = entity
+            flags = self.entity_data[entity_type]['flags']
+            if "walkable" not in flags:
                 # Special case walking into walls and closed doors.
                 #print("bump")
                 move_happening = False
@@ -1164,8 +1167,6 @@ class _MultiHackUtility(object):
         event = ("message", message)
         self.players[player_id]['event_queue'].append(event)
 
-Entity = collections.namedtuple('Entity','id name flags character colour')
-
 def quick_pickle(obj):
     """Pickles obj with the highest availible format, returning as a
        binary string."""
@@ -1185,6 +1186,12 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
         self.name = name
         self.id = id if id is not None else utility.get_id('game')
 
+        self.entity_data = {
+            'player': {'symbol': '@', 'colour': 'white', 'flags':()},
+            'wall': {'symbol': '#', 'colour': 'white', 'flags':()},
+            'floor': {'symbol': '.', 'colour': 'white', 'flags':('walkable',)},
+        }
+
         self.players = {}
         self.universe = {}
 
@@ -1201,11 +1208,9 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
                 world[x,y,0] = entities = []
                 entity_id = utility.get_id('entity')
                 if self.random.random() < 0.35:
-                    entity = Entity(entity_id, 'wall', set(),
-                                    '#', 'white')
+                    entity = (entity_id, 'wall')
                 else:
-                    entity = Entity(entity_id, 'floor', set(['walkable']),
-                                    '.', 'white')
+                    entity = (entity_id, 'floor')
 
                     self._empties.append((x,y))
                 entities.append(entity)
@@ -1244,7 +1249,7 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
         player_state['location'] = ('level1', entity_x, entity_y, 0)
         player_state['entity_id'] = entity_id = utility.get_id('entity')
 
-        entity = Entity(entity_id, 'player', set(), '@', 'white')
+        entity = (entity_id, 'player')
 
         self.universe['level1'][entity_x, entity_y, 0].append(entity)
 
@@ -1254,6 +1259,7 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
 
         remote_store['known_universe'] = self.universe
         remote_store['player_location'] = player_state['location']
+        remote_store['entity_data'] = self.entity_data
 
         return self._crappy_all_store()
 
@@ -1297,13 +1303,14 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
 
         player_state = self.players[player_id]
         location = player_state['location']
-        entity_id = player_state['entity_id']
+        player_entity_id = player_state['entity_id']
 
         world = self.universe[location[0]]
         x,y,z = location[1], location[2], location[3]
 
         for entity in world[x,y,z]:
-            if entity.id == entity_id:
+            entity_id, entity_type = entity
+            if entity_id == player_entity_id:
                 world[x,y,z].remove(entity)
                 break
 

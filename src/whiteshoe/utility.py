@@ -344,11 +344,20 @@ def stream_unwrap(data):
 
     return unpacked, data
 
-def quick_pickle(obj):
-    return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
+TYPE = "MARSHAL"
+#TYPE = "PICKLE"
 
-def quick_unpickle(binstr):
-    return pickle.loads(binstr)
+if TYPE == "PICKLE":
+    def quick_pickle(obj):
+        return pickle.dumps(obj, pickle.HIGHEST_PROTOCOL)
+
+    def quick_unpickle(binstr):
+        return pickle.loads(binstr)
+elif TYPE == "MARSHAL":
+    def quick_pickle(obj):
+        return marshal.dumps(obj)
+    def quick_unpickle(binstr):
+        return marshal.loads(binstr)
 
 class DifflingAuthor(object):
     def __init__(self, aggressive=False):

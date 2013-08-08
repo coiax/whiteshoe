@@ -1,9 +1,11 @@
+from __future__ import print_function
 import random
 import operator
 
 import constants
 import utility
 import itertools
+
 
 generators = {}
 
@@ -111,6 +113,39 @@ def depth_first(X=80, Y=24, seed=0):
 
     return world
 
+@generator
+def dungeon_alpha(X=69,Y=16, seed=0):
+    r = random.Random(seed)
+    min_size = 4
+    max_size = 9
+    num_rooms = 6
+
+    level = {}
+    for x in range(X):
+        for y in range(Y):
+            level[x,y] = False
+
+    for i in range(num_rooms):
+        x_length = r.randint(min_size, max_size)
+        y_length = r.randint(min_size, max_size)
+
+        # topleft
+        x1 = r.randint(0,X-min_size)
+        y1 = r.randint(0,Y-min_size)
+
+        for x in range(x1, x1 + x_length):
+            for y in range(y1, y1 + y_length):
+                level[x,y] = True
+
+    new_level = {}
+
+    for coord, is_floor in list(level.items()):
+        entity_id = utility.get_id('entity')
+        entity_type = "floor" if is_floor else "wall"
+        new_level[coord + (0,)] = [(entity_id, entity_type)]
+
+    return new_level
+
 def world_to_string(world):
     rows = []
 
@@ -138,6 +173,26 @@ def world_to_string(world):
         row += char
 
     return '\n'.join(rows)
+
+def print_level(level):
+    coords = sorted(list(level),key=operator.itemgetter(1,0))
+    last_y = None
+    for coord in coords:
+        y = coord[1]
+        if last_y is None:
+            pass
+        elif last_y < y:
+            print()
+
+        last_y = y
+        entity = level[coord][-1]
+        entity_id, entity_type = entity
+        if entity_type == "wall":
+            print('#',end='')
+        elif entity_type == "floor":
+            print('.',end='')
+
+
 
 def pretty_walls(world):
     for coord, objects in world.items():
