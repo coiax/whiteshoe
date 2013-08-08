@@ -7,6 +7,7 @@ import random
 import re
 import struct
 import marshal
+import operator
 try:
     import cPickle as pickle
 except ImportError:
@@ -175,6 +176,13 @@ def neighbourhood(coord,n=1):
         for j in range(y-n, y+n+1):
             coords.append((i,j))
     return coords
+
+def border(coords):
+    border_coords = []
+    for coord in coords:
+        border_coords.extend(neighbourhood(coord))
+    border_coords = set(border_coords) - set(coords)
+    return list(perimeter(border_coords))
 
 def cardinal_neighbourhood(x_y):
     x, y = x_y
@@ -546,3 +554,20 @@ def test_nesty():
     n = nesty()
     n["one"] = {"two": {"three": "value"}}
     assert n["one"]["two"]["three"] == 'value'
+
+def perimeter(coords):
+    sorted_coords = list(sorted(coords,key=operator.itemgetter(1,0)))
+    topleft = sorted_coords[0]
+    bottomright = sorted_coords[-1]
+    
+    # Then the perimeter is all coordinates that share an X or a Y with
+    # either the topleft or the bottomright.
+    x1, y1 = topleft
+    x2, y2 = bottomright
+    
+    perimeter = []
+    for coord in sorted_coords:
+        if coord[0] in (x1,x2) or coord[1] in (y1,y2):
+            perimeter.append(coord)
+    
+    return perimeter

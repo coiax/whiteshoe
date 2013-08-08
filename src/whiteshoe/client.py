@@ -110,78 +110,6 @@ def curses_setup(stdscr):
         COLOUR_PAIRS[i] = curses.color_pair(i)
     stdscr.nodelay(1)
 
-class SetupScene(Scene):
-    def __init__(self, namespace, network):
-        self.namespace = namespace
-        self.network = network
-
-        self.network_lock = threading.RLock()
-
-    def interact(self):
-        self._start_thread()
-        # This keeps calling network.update(), although it means
-        # we need to aquire the network_lock to do any network things
-        # print(constants.BANNER)
-
-        if 'name' not in self.namespace:
-            self.namespace.name = raw_input('Codename> ')
-        if 'team' not in self.namespace:
-            team_str = raw_input('Team (0 for no team)> ')
-            team = 0
-
-            if team_str and team_str != '0':
-                try:
-                    team = int(team_str)
-                except ValueError:
-                    print("Invalid team, assuming no team.")
-
-            self.namespace.team = team
-
-        name = self.namespace.name
-        team = self.namespace.team
-
-        scene = GameScene(self.namespace, self.network)
-
-        self.network.join_game(autojoin=True,player_name=name,player_team=team)
-
-        raise NewScene(scene)
-
-    def cleanup(self):
-        self._stop_thread()
-
-    def shutdown(self):
-        pass
-
-    def _start_thread(self):
-        self.thread_running = True
-
-        self.network_thread = threading.Thread(name='NetworkThread',
-                                               target=self._thread_run)
-        self.network_thread.daemon = True
-
-        self.network_thread.start()
-
-    def _stop_thread(self):
-        with self.network_lock:
-            self.thread_running = False
-
-        self.network_thread.join(timeout=0.4)
-
-        if self.network_thread.is_alive():
-            # Give up, the thread is marked daemon, and should die with
-            # the program
-            pass
-
-    def _thread_run(self):
-        # I am sorry for my use of threads in Python, I am a horrible person.
-        while True:
-            # Allows the main thread to obtain this lock
-            time.sleep(0.01)
-            with self.network_lock:
-                if not self.thread_running:
-                    break
-                self.network.update()
-
 class ConsoleScene(Scene):
     def __init__(self, namespace, network):
         self.network = network
@@ -203,57 +131,6 @@ class ConsoleScene(Scene):
 
     def cleanup(self):
         pass
-    def shutdown(self):
-        pass
-
-class ScoreScene(object):
-    def __init__(self, namespace, network):
-        self.namespace = namespace
-        self.network = network
-
-    def interact(self):
-        curses.wrapper(self._real_interact)
-
-    def _real_interact(self, stdscr):
-        curses_setup(stdscr)
-
-        # FIXME since scores comes from namespace, it doesn't update if
-        # network gets new information. This should be fixed, probably
-        # by scores being stored in the network object?
-
-        if 'scores' in self.namespace:
-            stdscr.clear()
-
-            scores = self.namespace.scores
-
-            y = 0
-            stdscr.addstr(y, 0, "Scores")
-            y += 1
-
-            grouped_scores = list(utility.grouper(2, scores))
-            grouped_scores.sort(key=operator.itemgetter(1),reversed=True)
-
-            for player_id, score in grouped_scores:
-                name = self.network.players[player_id]
-
-                stdscr.addstr(y, 0, "{} : {}".format(name, score))
-                y += 1
-
-            while True:
-                self.network.update()
-
-                # non-blocking
-                c = stdscr.getch()
-                if c != curses.ERR:
-                    # Any key quits ScoreScene
-                    break
-
-        scene = GameScene(self.namespace, self.network)
-        raise NewScene(scene)
-
-    def cleanup(self):
-        pass
-
     def shutdown(self):
         pass
 
@@ -283,6 +160,7 @@ class GameScene(Scene):
         self.network = network
 
         self._command_mode = False
+        self._curses_feedback_mode = False
         self._messages = []
         self._message_timer = utility.Stopwatch()
         self._draw_cache = {}
@@ -360,8 +238,9 @@ class GameScene(Scene):
         for event in self.network.events:
             if event[0] == "message":
                 self._messages.append(event[1])
-                if not self._message_timer.running:
-                    self._message_timer.start()
+
+        if self._messages and not self._message_timer.running:
+            self._message_timer.start()
 
         if self._messages and self._message_timer.elapsed_seconds > 10:
             self._messages.pop(0)
@@ -584,6 +463,12 @@ class GameScene(Scene):
             ord('k'): ("move", (constants.Direction.north,)),
             ord('l'): ("move", (constants.Direction.east,)),
 
+            ord('y'): ("move", (constants.Direction.northwest,)),
+            ord('u'): ("move", (constants.Direction.northeast,)),
+            ord('b'): ("move", (constants.Direction.southwest,)),
+            ord('n'): ("move", (constants.Direction.southeast,)),
+
+
             # wasd
             #ord('w'): ("move", [constants.Direction.up]),
             #ord('a'): ("move", [constants.Direction.left]),
@@ -638,6 +523,10 @@ class GameScene(Scene):
                 # BACKSPACE
                 self._command = self._command[:-1]
 
+        elif self._curses_feedback_mode:
+            self._messages.append("Pressed: {}".format(c))
+            self._curses_feedback_mode = False
+
         elif c == ord('c'):
             consolescene = ConsoleScene(self.namespace, self.network)
             raise NewScene(consolescene)
@@ -646,6 +535,11 @@ class GameScene(Scene):
             # Now entering command mode.
             self._command_mode = True
             self._command = ''
+
+        elif c == ord('?'):
+            # Curses feedback mode. The next key pressed will print it's
+            # keycode to the message log.
+            self._curses_feedback_mode = True
 
         elif c in cmds:
             self.network.remote_event(cmds[c])
@@ -890,345 +784,6 @@ class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
 
         self.keepalive_timer.restart()
 
-
-class ClientNetwork(object):
-    def __init__(self,socket_type='tcp'):
-        self.handlers = {
-            # c->s get games list
-            constants.GAMES_LIST: self._games_running,
-            # c->s make new game
-            constants.ERROR: self._error,
-            # c->s action
-            constants.VISION_UPDATE: self._vision_update,
-            constants.KEEP_ALIVE: self._keep_alive,
-            constants.GAME_STATUS: self._game_status,
-            constants.DISCONNECT: self._disconnect,
-            constants.KEYVALUE: self._keyvalue,
-        }
-
-        self.socket = None
-        assert socket_type in ('tcp','udp')
-        self.socket_type = socket_type
-
-        self.known_world = {}
-
-        self.game_id = None
-        self.player_id = None
-        self.vision = None
-
-        self.players = {}
-
-        self.events = []
-
-        self.keepalive_timer = utility.Stopwatch()
-        self.lastheard_timer = utility.Stopwatch()
-
-        self._cached_player = None
-        self._buffer = ''
-
-        self.keyvalues = {}
-
-    def connect(self, addr):
-        family = socket.AF_INET6
-
-        ip,port = addr
-
-        if port is None:
-            port = constants.DEFAULT_PORT
-
-        if '.' in ip:
-            family = socket.AF_INET
-        elif ':' in ip:
-            family = socket.AF_INET6
-
-        if self.socket_type == 'tcp':
-            type_ = socket.SOCK_STREAM
-        elif self.socket_type == 'udp':
-            type_ = socket.SOCK_DGRAM
-
-        self.socket = socket.socket(family, type_)
-        self._server_addr = (ip, port)
-
-        if self.socket_type == 'tcp':
-            self.socket.connect((ip, port))
-
-        self._send_keepalive()
-        self.lastheard_timer.start()
-
-    def join_game(self, autojoin=False, game_id=None,
-                  player_name=None, player_team=None):
-
-        assert self.socket is not None
-        assert autojoin or game_id is not None
-
-        p = packet_pb2.Packet()
-        p.packet_id = get_id('packet')
-        p.payload_type = constants.JOIN_GAME
-        if autojoin:
-            p.autojoin = True
-        else:
-            p.autojoin = False
-            p.join_game_id = game_id
-        if player_name is not None:
-            p.player_name = player_name
-        if player_team is not None:
-            p.player_team = player_team
-
-        self._send_packets([p])
-
-    def update(self):
-        # Do network things
-        if self.socket is not None:
-            self._cached_player = None
-            self._ticklet()
-
-
-            if self.keepalive_timer.elapsed_seconds > constants.KEEPALIVE_TIME:
-                self._send_keepalive()
-
-            if self.lastheard_timer.elapsed_seconds > 30:
-                # Later, we'll flag the server as being disconnected,
-                # but for now, raise the exception FIXME
-                raise ServerDisconnect
-
-    def shutdown(self, reason=constants.DISCONNECT_SHUTDOWN):
-        if self.socket is not None:
-            p = packet_pb2.Packet()
-            p.packet_id = get_id('packet')
-            p.payload_type = constants.DISCONNECT
-            p.disconnect_code = reason
-
-            self._send_packets((p,))
-
-    def _ticklet(self):
-        rlist, wlist, xlist = select.select((self.socket,),(),(),0.1)
-        for rs in rlist:
-            if self.socket_type == 'udp':
-                data, addr = rs.recvfrom(4096)
-                chunks = (data,)
-            elif self.socket_type == 'tcp':
-                data = rs.recv(4096)
-                if not data:
-                    raise ServerDisconnect
-
-                self._buffer += data
-                chunks, buffer = utility.stream_unwrap(self._buffer)
-                self._buffer = buffer
-
-            self.lastheard_timer.restart()
-            try:
-                for chunk in chunks:
-                    packet = packet_pb2.Packet.FromString(chunk)
-
-                    self.handlers[packet.payload_type](packet)
-
-            except Exception as e:
-                #traceback.print_exc()
-                # Can't print exceptions when the tty is up
-                raise
-
-    def _send_keepalive(self):
-        p = packet_pb2.Packet()
-        p.packet_id = get_id('packet')
-        p.payload_type = constants.KEEP_ALIVE
-        p.timestamp = int(time.time())
-
-        self._send_packets([p])
-
-    def _send_packets(self, packets):
-        if self.socket is not None:
-            for packet in packets:
-                data = packet.SerializeToString()
-                if self.socket_type == 'tcp':
-                    self.socket.sendall(utility.stream_wrap(data))
-                elif self.socket_type == 'udp':
-                    self.socket.sendto(data, self._server_addr)
-
-            self.keepalive_timer.restart()
-
-    def send_command(self,cmd,arg):
-        assert self.socket is not None
-
-        if self.game_id is None:
-            raise NotInGame
-        cmd_num = constants.to_numerical_constant(cmd)
-        arg_num = constants.to_numerical_constant(arg)
-
-        p = packet_pb2.Packet()
-        p.packet_id = get_id('packet')
-        p.payload_type = constants.GAME_ACTION
-        # Ah, we need to note the game_id that we're participating in
-        p.game_id = self.game_id
-        p.action = cmd_num
-        p.argument = arg_num
-
-        self._send_packets([p])
-
-    def find_me(self):
-        assert self.socket is not None
-
-        if self.player_id is not None:
-            if self._cached_player is not None:
-                return self._cached_player
-            else:
-                for coord, objects in self.known_world.items():
-                    for object in objects:
-                        if (object[0] == constants.OBJ_PLAYER and
-                            object[1]['player_id'] == self.player_id):
-
-                            self._cached_player = (coord, object)
-
-                            return coord, object
-
-        # If no player is found
-        raise PlayerNotFound
-
-    def get_visible(self):
-        return self.known_world
-
-    def get_events(self):
-        e = self.events
-        self.events = []
-        return e
-
-    # packet handlers
-    def _games_running(self, packet):
-        pass
-    def _error(self, packet):
-        pass
-    def _vision_update(self, packet):
-        """
-        repeated sint32 objects = 600 [packed=true];
-        // objects consists of 4-tuples: x,y,obj_type,attr_id
-        // attr_id is either -1 for no attributes, or an index of an attribute
-        message Attribute {
-            optional int32 player_id = 1;
-            optional int32 direction = 2;
-            optional int32 team = 3;
-            optional int32 hp_max = 4;
-            optional int32 hp = 5;
-            optional int32 max_ammo = 6;
-            optional int32 ammo = 7;
-        }
-        repeated Attribute attributes = 601;
-        """
-        # unpack attributes first
-        unpacked_attributes = []
-
-        for attribute in packet.attributes:
-            unpacked = {}
-            for key in constants.ATTRIBUTE_KEYS:
-                if attribute.HasField(key):
-                    value = getattr(attribute, key)
-                    if key in constants.ATTRIBUTE_CONSTANT_KEYS:
-                        value = constants.from_numerical_constant(value)
-                    unpacked[key] = value
-
-            unpacked_attributes.append(unpacked)
-
-        cleared = set()
-
-        if packet.clear_all:
-            self.known_world.clear()
-
-
-        for x,y,obj_type,attr_id in grouper(4, packet.objects):
-            assert None not in (x,y,obj_type,attr_id)
-
-            if attr_id == -1:
-                attr = {}
-            else:
-                attr = unpacked_attributes[attr_id].copy()
-
-            if (x,y) not in cleared:
-                self.known_world[x,y] = []
-                cleared.add((x,y))
-
-            if obj_type == -1:
-                # An obj_type of -1 merely clears the (x,y) cell
-                continue
-
-            obj_type = constants.from_numerical_constant(obj_type)
-
-            self.known_world[x,y].append((obj_type, attr))
-
-    def _keep_alive(self, packet):
-        pass
-
-    def _game_status(self, packet):
-        status = packet.status
-
-        event = None
-
-        if status == constants.STATUS_GAMEINFO:
-            self.game_id = packet.game_id
-            self.player_id = packet.your_player_id
-            self.vision = packet.game_vision
-            event = (status, self.game_id, self.player_id, self.vision)
-
-        elif status == constants.STATUS_JOINED:
-            event = (status, packet.game_id, packet.player_id,
-                     packet.joined_player_name)
-            self.players[packet.player_id] = packet.joined_player_name
-
-        elif status == constants.STATUS_LEFT:
-            if packet.player_id == self.player_id:
-                # You just left the game
-                self.game_id = None
-
-        elif status == constants.STATUS_SPAWN:
-            pass
-
-        elif status in {constants.STATUS_DEATH, constants.STATUS_DAMAGED}:
-            responsible = packet.responsible_id
-            if responsible == -1:
-                responsible = None
-
-            damage_type = packet.damage_type
-
-            event = (status, responsible, damage_type)
-            if status == constants.STATUS_DEATH:
-                self.known_world.clear()
-
-        elif status == constants.STATUS_KILL:
-            event = (status, packet.victim_id)
-        elif status == constants.STATUS_GAMEPAUSE:
-            unpause_time = packet.unpause_time
-            if unpause_time:
-                unpause_time = datetime.datetime(*unpause_time)
-
-            else:
-                unpause_time = None
-
-
-            event = (status, unpause_time, packet.countdown)
-        elif status == constants.STATUS_GAMERESUME:
-            pass
-
-        elif status == constants.STATUS_GLOBALMESSAGE:
-            event = (status, packet.message_from, packet.message_body)
-
-        if event is None:
-            event = (status,)
-
-        self.events.append(event)
-
-    def _disconnect(self, packet):
-        # Like STATUS_LEFT, but we remove all information about the server
-
-        self.known_world = {}
-
-        self.game_id = None
-        self.player_id = None
-        self.vision = None
-
-        # FIXME later we won't raise this, maybe possibly change scenes?
-        raise ServerDisconnect
-
-    def _keyvalue(self, packet):
-        for key, value in utility.grouper(2, packet.keyvalues):
-            self.keyvalues[key] = value
-
 class ClientException(Exception):
     pass
 
@@ -1238,13 +793,7 @@ class NewScene(ClientException):
 class CloseProgram(ClientException):
     pass
 
-class PlayerNotFound(ClientException):
-    pass
-
 class ServerDisconnect(ClientException):
-    pass
-
-class NotInGame(ClientException):
     pass
 
 if __name__=='__main__':

@@ -114,34 +114,60 @@ def depth_first(X=80, Y=24, seed=0):
     return world
 
 @generator
-def dungeon_alpha(X=69,Y=16, seed=0):
+def dungeon_alpha(X=69,Y=16, seed=0, num_rooms=6):
     r = random.Random(seed)
-    min_size = 4
-    max_size = 9
-    num_rooms = 6
+    MIN_SIZE = 4
+    MAX_SIZE = 9
+    NUM_ROOMS = num_rooms
+    rooms_generated = 0
 
     level = {}
     for x in range(X):
         for y in range(Y):
-            level[x,y] = False
+            level[x,y] = "rock"
 
-    for i in range(num_rooms):
-        x_length = r.randint(min_size, max_size)
-        y_length = r.randint(min_size, max_size)
+    while rooms_generated < NUM_ROOMS:
+        x_length = r.randint(MIN_SIZE, MAX_SIZE)
+        y_length = r.randint(MIN_SIZE, MAX_SIZE)
 
         # topleft
-        x1 = r.randint(0,X-min_size)
-        y1 = r.randint(0,Y-min_size)
+        x1 = r.randint(0,X-MIN_SIZE)
+        y1 = r.randint(0,Y-MIN_SIZE)
+
+        coordinates = set()
 
         for x in range(x1, x1 + x_length):
             for y in range(y1, y1 + y_length):
-                level[x,y] = True
+                # The min() is to ensure the coordinates are not
+                # set and checked outside the boundries of the generated
+                # level.
+                coordinates.add((min(x,X-1),min(y,Y-1)))
+
+        perimeter = utility.perimeter(coordinates)
+        valid = True
+        adjacent = False
+        for coord in perimeter:
+            if level[coord] not in ("rock", "smoothwall"):
+                valid = False
+                break
+
+        for coord in utility.border(perimeter):
+            if coord in level and level[coord] != "rock":
+                valid = False
+                break
+
+        if valid:
+            for coord in perimeter:
+                level[coord] = "smoothwall"
+            for coord in set(coordinates) - set(perimeter):
+                level[coord] = "floor"
+
+            rooms_generated += 1
 
     new_level = {}
 
-    for coord, is_floor in list(level.items()):
+    for coord, entity_type in list(level.items()):
         entity_id = utility.get_id('entity')
-        entity_type = "floor" if is_floor else "wall"
         new_level[coord + (0,)] = [(entity_id, entity_type)]
 
     return new_level
@@ -187,11 +213,15 @@ def print_level(level):
         last_y = y
         entity = level[coord][-1]
         entity_id, entity_type = entity
-        if entity_type == "wall":
+        if entity_type == "smoothwall":
+            print('x',end='')
+        elif entity_type == "roughwall":
             print('#',end='')
+        elif entity_type == "rock":
+            print(' ',end='')
         elif entity_type == "floor":
             print('.',end='')
-
+    print()
 
 
 def pretty_walls(world):

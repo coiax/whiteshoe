@@ -5,6 +5,10 @@ import os.path
 from flufl.enum import Enum, IntEnum
 from utility import get_id
 
+# Call once to "consume" zero.
+get_id('enum')
+
+
 class Direction(Enum):
     up = get_id('enum')
     down = get_id('enum')
