@@ -144,6 +144,12 @@ def cursify(character, colour, flags=None):
         colour_pair = 3
     elif colour == "white":
         colour_pair = 16
+    elif colour == "blue":
+        colour_pair = 5
+    elif colour == "red":
+        colour_pair = 2
+    elif colour == "yellow":
+        colour_pair = 12
     else:
         colour_pair = 1 # TODO complain
 
@@ -285,6 +291,7 @@ class GameScene(Scene):
 
         map_data = self.network.store['known_universe'][world]
 
+        #self.viewport.clear()
         for coord, entities in map_data.items():
             self.draw_tile(coord, entities)
 
@@ -306,7 +313,7 @@ class GameScene(Scene):
         # Default settings. A green '?' indicates an unknown character.
 
         character = '?'
-        flags = set()
+        flags = set(['bold'])
         colour = "green"
 
         if not entities:
@@ -319,9 +326,12 @@ class GameScene(Scene):
 
             id, type = entity
 
-            character = self.network.store['entity_data'][type]['symbol']
-            colour = self.network.store['entity_data'][type]['colour']
-            flags = ()
+            type_data = self.network.store['entity_data'].get(type)
+
+            if type_data is not None:
+                character = type_data['symbol']
+                colour = type_data['colour']
+                flags = type_data.get('flags', ())
 
         character, attr = cursify(character, colour, flags)
         try:

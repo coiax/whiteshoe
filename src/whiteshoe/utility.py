@@ -352,8 +352,8 @@ def stream_unwrap(data):
 
     return unpacked, data
 
-TYPE = "MARSHAL"
-#TYPE = "PICKLE"
+#TYPE = "MARSHAL"
+TYPE = "PICKLE"
 
 if TYPE == "PICKLE":
     def quick_pickle(obj):

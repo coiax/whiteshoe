@@ -1049,6 +1049,11 @@ def pack_attribute(obj_attr):
 class _MultiHackEventHandler(object):
     def _do_move(self, player_id, flags=()):
         player_state = self.players[player_id]
+        player_flags = player_state['flags']
+
+        if 'lost' in player_flags:
+            # A lost player cannot move, as he has no entity.
+            return
 
         direction = set(flags) & set(constants.MULTIHACK_DIRECTIONS)
         assert len(direction) == 1
@@ -1076,7 +1081,10 @@ class _MultiHackEventHandler(object):
         else:
             # We didn't find the player. SOMETHING HAS GONE HORRIBLY
             # WRONG AAAAAAAAA
-            assert False #TODO better exception.
+            player_flags.add("lost")
+            # This is most of the time, indicating a bug, but occasionally
+            # the sign of weird debugging.
+            return
 
         diff = constants.DIFFS[direction]
 
@@ -1098,7 +1106,13 @@ class _MultiHackEventHandler(object):
 
         for entity in new_location_entities:
             entity_id, entity_type = entity
-            flags = self.entity_data[entity_type]['flags']
+            type_data = self.entity_data.get(entity_type)
+            if type_data is None:
+                # Assume no flags as some sensible default.
+                # TODO whine in the server log about the unknown entity.
+                flags = ()
+            else:
+                flags = type_data.get('flags',())
             if "walkable" not in flags:
                 # Special case walking into walls and closed doors.
                 #print("bump")
@@ -1125,14 +1139,20 @@ class _MultiHackEventHandler(object):
             command = parts[0]
             args = parts[1:]
         else:
-            command = 'noop'
+            command = 'noop' #TODO probably change to HELP by default.
             args = ()
 
         handlers = {
             'status': self._command_status,
             'noop': lambda *args: None,
+            'fail': self._command_fail,
             'savestate': self._command_savestate,
             'loadstate': self._command_loadstate,
+            '#player': self._command_hashplayer,
+            '#remove': self._command_hashremove,
+            '#spawn': self._command_hashspawn,
+            '#teleport': self._command_hashteleport,
+            '#look': self._command_hashlook,
         }
 
         # TODO complain at the client for a bad command
@@ -1140,9 +1160,16 @@ class _MultiHackEventHandler(object):
             self._message_player(player_id, "Bad command: {}".format(command))
         else:
             handler = handlers[command]
-            handler(player_id, *args)
+            try:
+                handler(player_id, *args)
+            except Exception as e:
+                msg = "Command error: {}".format(repr(e))
+                self._message_player(player_id, msg)
 
 class _MultiHackCommandHandler(object):
+    def _command_fail(self, player_id, *args):
+        # This command does nothing except fail.
+        raise Exception("Fail command can only fail.")
     def _command_status(self, player_id):
         num_levels = len(self.universe)
         num_entities = 0
@@ -1161,6 +1188,113 @@ class _MultiHackCommandHandler(object):
         with open('game.state','rb') as f:
             state = pickle.load(f)
         self.load_state(state)
+
+    def _command_hashplayer(self, commanding_player_id):
+        for player_id in sorted(self.players):
+            name = self.players[player_id]['name']
+            location = self.players[player_id]['location']
+            flags = ','.join(self.players[player_id]['flags'])
+            fmt = "{name} (ID {player_id}) [{flags}] at {location}"
+            msg = fmt.format(**vars())
+            self._message_player(commanding_player_id, msg)
+
+    def _command_hashremove(self, player_id, *args):
+        assert args #Must have at least one entity id to remove
+        doomed_ids = []
+        for arg in args:
+            doomed_ids.append(int(arg))
+
+        found = False
+        for world_name, world in self.universe.items():
+            for coord, entities in world.items():
+                for entity in entities:
+                    entity_id, entity_type = entity
+                    if entity_id in doomed_ids:
+                        entities.remove(entity)
+                        doomed_ids.remove(entity_id)
+                        if not entities:
+                            del world[coord]
+                        id = entity_id
+                        loc = (world_name,) + coord
+                        fmt = "Entity #{id} \"{entity_type}\" {loc} removed."
+                        msg = fmt.format(**vars())
+                        self._message_player(player_id, msg)
+
+        for doomed_id in doomed_ids:
+            msg = "Entity #{} not found.".format(doomed_id)
+            self._message_player(player_id, msg)
+
+    def _command_hashspawn(self, player_id, entity_type):
+        # Spawn from where the player is.
+        world, x, y, z = loc = self.players[player_id]['location']
+        assert world in self.universe
+        if (x,y,z) not in self.universe[world]:
+            self.universe[world][x,y,z] = []
+
+        entity_list = self.universe[world][x,y,z]
+
+        new_id = utility.get_id('entity')
+
+        entity_list.append((new_id, entity_type))
+
+        fmt = "Entity #{new_id} \"{entity_type}\" spawned at {loc}"
+        self._message_player(player_id, fmt.format(**vars()))
+
+    def _command_hashteleport(self, player_id, world, x, y, z):
+        player_state = self.players[player_id]
+
+        x, y, z = int(x), int(y), int(z)
+
+        assert world in self.universe
+        assert (x,y,z) in self.universe[world]
+
+        old_entity_location = player_state['location']
+        old_world, old_x, old_y, old_z = old_entity_location
+
+        player_entity_id = player_state['entity_id']
+
+        entities = self.universe[old_world][old_x,old_y,old_z]
+
+        for entity in entities:
+            entity_id, entity_type = entity
+            if entity_id == player_entity_id:
+                entities.remove(entity)
+                self.universe[world][x,y,z].append(entity)
+                player_state['location'] = loc = (world,x,y,z)
+                fmt = "Moved player entity #{entity_id} to {loc}"
+                msg = fmt.format(**vars())
+                break
+        else:
+            # No entity found, so we'll just MAKE A NEW ONE.
+            new_id = utility.get_id('entity')
+            new_entity = (new_id, "player")
+            self.universe[world][x,y,z].append(new_entity)
+            player_state['location'] = loc = (world, x, y, z)
+            player_state['entity_id'] = new_id
+            player_state['flags'].discard('lost')
+            fmt = "No entity found, new player entity #{new_id} at {loc}"
+            msg = fmt.format(**vars())
+
+        player_state['remote_store']['player_location'] = loc
+        self._message_player(player_id, msg)
+
+    def _command_hashlook(self, player_id, world=None,
+                          x_str=None, y_str=None, z_str=None):
+
+        if (world, x_str, y_str, z_str) == (None, None, None, None):
+            loc = self.players[player_id]['location']
+        else:
+            loc = world, int(x_str), int(y_str), int(z_str)
+        world, x, y, z = loc
+
+        assert world in self.universe
+        assert (x,y,z) in self.universe[world]
+
+        self._message_player(player_id, "Entities at {}:".format(loc))
+        for entity in self.universe[world][x,y,z]:
+            entity_id, entity_type = entity
+            msg = " - #{entity_id} \"{entity_type}\"".format(**vars())
+            self._message_player(player_id, msg)
 
 class _MultiHackUtility(object):
     def _message_player(self, player_id, message):
@@ -1187,9 +1321,15 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
         self.id = id if id is not None else utility.get_id('game')
 
         self.entity_data = {
-            'player': {'symbol': '@', 'colour': 'white', 'flags':()},
-            'wall': {'symbol': '#', 'colour': 'white', 'flags':()},
+            'player': {'symbol': '@', 'colour': 'white'},
+            'wall': {'symbol': '#', 'colour': 'white'},
             'floor': {'symbol': '.', 'colour': 'white', 'flags':('walkable',)},
+            'pool': {'symbol': '}', 'colour': 'blue'},
+            'lava': {'symbol': '}', 'colour': 'red'},
+            'gridbug': {'symbol': 'x', 'colour':'purple','flags':('monster',)},
+            'throne': {'symbol': '\\','colour':'yellow',
+                       'flags':('walkable','bold')},
+            'tree': {'symbol':'#','colour':'green'}
         }
 
         self.players = {}
@@ -1243,6 +1383,8 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
 
         player_state['remote_store'] = utility.DifflingAuthor(aggressive=True)
         player_state['event_queue'] = []
+        player_state['name'] = "Bob Newbie"
+        player_state['flags'] = set()
 
         entity_x, entity_y = self._empties.pop()
 
