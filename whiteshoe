@@ -8,4 +8,4 @@ except ImportError:
     sys.path.insert(0, os.path.join('.','src'))
     import whiteshoe.client
 
-whiteshoe.client.client_main()
+sys.exit(whiteshoe.client.client_main())

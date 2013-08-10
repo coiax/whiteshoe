@@ -8,4 +8,4 @@ except ImportError:
     sys.path.insert(0, os.path.join('.','src'))
     import whiteshoe.server
 
-whiteshoe.server.server_main()
+sys.exit(whiteshoe.server.server_main())

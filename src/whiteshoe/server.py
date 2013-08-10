@@ -14,6 +14,7 @@ import operator
 import time
 import logging
 import collections
+import errno
 
 import constants
 import packet_pb2
@@ -40,6 +41,10 @@ def server_main(args=None):
     ns = p.parse_args(args)
 
     logging.basicConfig(filename=ns.log_file, level=logging.DEBUG)
+    console = logging.StreamHandler()
+    console.setLevel(logging.WARNING)
+    logging.getLogger('').addHandler(console)
+
     logger.info("Whiteshoe v0.0.1")
 
     options = collections.OrderedDict()
@@ -53,7 +58,7 @@ def server_main(args=None):
             option[parts[0]] = parts[1]
 
     s = Server(ns, options)
-    s.serve()
+    return s.serve()
 
 class Server(object):
     def __init__(self,ns, options):
@@ -92,8 +97,27 @@ class Server(object):
 
 
     def serve(self):
-        self.udp_socket.bind(('',self.port))
-        self.tcp_socket.bind(('',self.port))
+        udp_success = tcp_success = False
+        try:
+            self.udp_socket.bind(('',self.port))
+            udp_success = True
+            self.tcp_socket.bind(('',self.port))
+            tcp_success = True
+        except socket.error as exc:
+            family = None
+            if not udp_success:
+                family = 'UDP'
+            if not tcp_success:
+                family = 'TCP'
+
+            args = exc.args
+            if len(args) == 2:
+                error_errno, string = args
+                if error_errno == errno.EADDRINUSE:
+                    fmt = "{port}/{family} address is already in use."
+                    logger.error(fmt.format(port=self.port, family=family))
+                    return 1
+
         self.tcp_socket.listen(self.tcp_backlog)
         logger.info("Server listening on port {}".format(self.port))
 

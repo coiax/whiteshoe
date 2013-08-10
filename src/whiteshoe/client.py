@@ -260,23 +260,24 @@ class GameScene(Scene):
 
             self.viewport.addstr(i + 1,0, chr, attr)
 
-        # Call nout refresh on all windows.
-        self.viewport.noutrefresh()
-        self.infobar.noutrefresh()
 
         # Move cursor to your player.
         if 'player_location' in self.network.store:
             world, x, y, z = self.network.store['player_location']
             # TODO obviously with a level bigger than window size
             # we can't just rip the coordinates straight out.
+            curses.curs_set(2)
             try:
-                curses.curs_set(2)
                 self.viewport.move(y,x)
             except curses.error:
                 # TODO out of bounds cursor location probably. Need to
                 # notice and catch and stuff.
                 # Hide cursor.
                 curses.curs_set(0)
+
+        # Call nout refresh on all windows.
+        self.infobar.noutrefresh()
+        self.viewport.noutrefresh()
 
 
         # Then draw all changes.
@@ -367,10 +368,12 @@ class GameScene(Scene):
         remote_store = self.network.store
 
         player_name = remote_store.get('player_name','<NAME?>')
-        player_location = remote_store.get('player_location','<LOC?>')
+        player_location = remote_store.get('player_location','????')
 
-        fmt1 = '{player_name}'
-        fmt2 = '{player_location}'
+        world, x, y, z = player_location
+
+        fmt1 = '{player_name} the Debugling'
+        fmt2 = 'DL:{world}  Loc:{x},{y},{z}'
 
         line1 = fmt1.format(**vars())
         line2 = fmt2.format(**vars())

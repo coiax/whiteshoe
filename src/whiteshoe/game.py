@@ -98,7 +98,7 @@ class _MultiHackEventHandler(object):
         except KeyError:
             # This is a bug, all maps should be bordered by unpassable,
             # undiggable walls or something to that effect.
-            msg = "{} attempted to move to non existent coord {}"
+            msg = "Player #{} attempted to move to non existent coord {}"
             logger.warning(msg.format(player_id, (new_x, new_y, new_z)))
             move_happening = False
 
