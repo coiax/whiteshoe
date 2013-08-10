@@ -1,8 +1,11 @@
+from __future__ import print_function
+
 import itertools
 import math
 import collections
 import datetime
 import logging
+logger = logging.getLogger(__name__)
 import random
 import re
 import struct
@@ -10,7 +13,10 @@ import marshal
 import operator
 try:
     import cPickle as pickle
-except ImportError:
+except ImportError as __e:
+    __fmt = "Failure to import cPickle, using slower pickle module: {}"
+    logger.warning(__fmt.format(__e))
+    
     import pickle
 
 import bsdiff4

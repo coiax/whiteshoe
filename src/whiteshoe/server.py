@@ -108,7 +108,7 @@ class Server(object):
                     last_sent = self.clients[network_id]['last_sent']
 
                     if last_heard.elapsed_seconds > self.timeout:
-                        reason = constants.DISCONNECT_TIMEOUT
+                        reason = "last heard timeout"
                         self._disconnect_client(network_id, reason)
 
                     elif last_sent.elapsed_seconds > constants.KEEPALIVE_TIME:
@@ -185,10 +185,12 @@ class Server(object):
                             data = rs.recv(4096)
                         except socket.error as e:
                             disconnect = True
+                            reason = "socket receive freak"
                             logger.error(e)
 
                         if not data:
                             disconnect = True
+                            reason = "closed on other end"
 
                         if not disconnect:
                             client['last_heard'].restart()
@@ -209,7 +211,7 @@ class Server(object):
 
                         else:
                             # Recieving the empty string means a disconnect
-                            self._disconnect_client(network_id)
+                            self._disconnect_client(network_id, reason)
 
 
             except KeyboardInterrupt:
@@ -254,7 +256,8 @@ class Server(object):
                 except socket.error:
                     # TCP sockets are prone to randomly freaking out,
                     # occasionally.
-                    self._disconnect_client(network_id,reason=None)
+                    reason = "socket write freakout"
+                    self._disconnect_client(network_id,reason=reason)
                     continue
 
             elif type_ == 'UDP':
@@ -355,7 +358,7 @@ class Server(object):
         pass
 
     def _disconnect_packet(self, packet, network_id):
-        self._disconnect_client(network_id, packet.disconnect_code or None)
+        self._disconnect_client(network_id, "got disconnect packet")
 
     def _disconnect_client(self, network_id, reason=None):
         player_id = network_id
@@ -368,14 +371,21 @@ class Server(object):
         # Some types of disconnection, such as a TCP socket closing,
         # shouldn't provide a reason, so we don't try to send a packet
         # to a closed connection.
-        if reason is not None:
+        if reason not in ('socket write freakout', "closed on other end"):
             p = packet_pb2.Packet()
             p.packet_id = get_id('packet')
             p.payload_type = constants.DISCONNECT
-            p.disconnect_code = reason
+            # the hash(reason) is to provide A NUMBER based on the debug
+            # string provided. They may or may not mean anything and
+            # TODO we should probably use int enums instead at some point
+            p.disconnect_code = hash(reason) % 2**16
             self._send_packets(((network_id, p),))
 
-        type_, other = self.network_id_bidict[network_id]
+        try:
+            type_, other = self.network_id_bidict[network_id]
+        except KeyError:
+            # The socket's already been closed, nothing more we can do.
+            return
 
         if type_ == 'TCP':
             conn = other

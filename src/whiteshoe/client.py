@@ -17,11 +17,6 @@ import json
 import multiprocessing
 import os
 
-try:
-    import cPickle as pickle
-except ImportError:
-    import pickle
-
 import constants
 import packet_pb2
 from utility import get_id, grouper
@@ -134,7 +129,7 @@ class ConsoleScene(Scene):
     def shutdown(self):
         pass
 
-def cursify(character, colour, flags=None):
+def cursify(character, colour, flags=()):
     # Then turn that collection of settings into actual curses stuff.
     # TODO this probably needs processing and rounding to transform
     # into majorcolor, minorcolor, colorblind, and monocolor mode.
@@ -154,8 +149,10 @@ def cursify(character, colour, flags=None):
         colour_pair = 1 # TODO complain
 
     attr = COLOUR_PAIRS[colour_pair]
-    if flags is not None and "bold" in flags:
+    if "bold" in flags:
         attr |= curses.A_BOLD
+    if "underline" in flags:
+        attr |= curses.A_UNDERLINE
 
     return character, attr
 
@@ -167,9 +164,9 @@ class GameScene(Scene):
 
         self._command_mode = False
         self._curses_feedback_mode = False
+
         self._messages = []
         self._message_timer = utility.Stopwatch()
-        self._draw_cache = {}
 
         self.data = self.namespace.local_data = {}
 
@@ -208,13 +205,13 @@ class GameScene(Scene):
         # This is where all the initialisation stuff that can only happen
         # with the curses screen can happen.
         #self.viewport = curses.newwin()
+
+        # or, put more simply, this is where a significant amount of code
+        # is spent saving two lower rows to put information.
+
         max_y, max_x = stdscr.getmaxyx()
         self.size = max_x, max_y
 
-        if 'topleft' not in self.data:
-            self.data['topleft'] = [0,0]
-
-        max_y, max_x = stdscr.getmaxyx()
         INFOBAR_HEIGHT = 2
 
         viewport_topleft = (0,0)
@@ -235,6 +232,8 @@ class GameScene(Scene):
 
         if 'player_location' in self.network.store:
             self.draw_viewport()
+
+        self._draw_bottom_infobar()
 
         if self._command_mode:
             typed = self._command
@@ -261,20 +260,24 @@ class GameScene(Scene):
 
             self.viewport.addstr(i + 1,0, chr, attr)
 
+        # Call nout refresh on all windows.
+        self.viewport.noutrefresh()
+        self.infobar.noutrefresh()
+
         # Move cursor to your player.
         if 'player_location' in self.network.store:
             world, x, y, z = self.network.store['player_location']
             # TODO obviously with a level bigger than window size
             # we can't just rip the coordinates straight out.
             try:
+                curses.curs_set(2)
                 self.viewport.move(y,x)
             except curses.error:
                 # TODO out of bounds cursor location probably. Need to
                 # notice and catch and stuff.
-                pass
+                # Hide cursor.
+                curses.curs_set(0)
 
-        # Call nout refresh on all windows.
-        self.viewport.noutrefresh()
 
         # Then draw all changes.
         curses.doupdate()
@@ -313,12 +316,12 @@ class GameScene(Scene):
         # Default settings. A green '?' indicates an unknown character.
 
         character = '?'
-        flags = set(['bold'])
+        flags = ('bold','underline')
         colour = "green"
 
         if not entities:
             character = '?'
-            flags = set(["bold"])
+            flags = ('bold',)
             colour = "purple"
         elif entities:
             # TODO for now, we'll draw the last one in the list.
@@ -326,12 +329,30 @@ class GameScene(Scene):
 
             id, type = entity
 
+            entity_state = self.network.store['entity_state'].get(id, {})
             type_data = self.network.store['entity_data'].get(type)
 
             if type_data is not None:
+                entity_flags = entity_state.get('flags',())
+                entity_flag_set = type_data.get('entity_flag_set', {})
+
+                # Symbol and colour are required, flags is optional,
+                # defaulting to the empty set/tuple.
                 character = type_data['symbol']
                 colour = type_data['colour']
                 flags = type_data.get('flags', ())
+
+
+                for flag in entity_flag_set:
+                    if flag in entity_flags:
+                        triggered_configuration = entity_flags[flag]
+
+                        if 'symbol' in trigger_configuration:
+                            character = trigger_configuration['symbol']
+                        if 'colour' in trigger_configuration:
+                            colour = trigger_configuration['colour']
+                        if 'flags' in trigger_configuration:
+                            flags = trigger_configuration['flags']
 
         character, attr = cursify(character, colour, flags)
         try:
@@ -341,125 +362,21 @@ class GameScene(Scene):
             pass
 
     def _draw_bottom_infobar(self):
-        self.infobar.clear()
-        visible = self.network.get_visible()
-        try:
-            my_coord, player = self.network.find_me()
+        self.infobar.erase()
 
-            attr = player[1]
-        except PlayerNotFound:
-            attr = {}
+        remote_store = self.network.store
 
-        # Attempt to determine our score.
-        scores_json = self.network.keyvalues.get(constants.KEYVALUE_SCORES)
-        scores = json.loads(scores_json) if scores_json else {}
+        player_name = remote_store.get('player_name','<NAME?>')
+        player_location = remote_store.get('player_location','<LOC?>')
 
-        # Cooerce string json keys to numeric keys
-        for key in list(scores):
-            scores[int(key)] = scores[key]
+        fmt1 = '{player_name}'
+        fmt2 = '{player_location}'
 
-        fmta = {
-            'name' : attr.get('name', 'Unnamed'),
-            'hp': attr.get('hp', '?'),
-            'hp_max': attr.get('hp_max', '?'),
-            'ammo': attr.get('ammo','?'),
-            'player_id': attr.get('player_id','?'),
-            'topname': '?',
-            'topscore': '?',
-            'yourscore': scores.get(attr.get('player_id','?'), '?'),
-            'rank': 'Ordinary',
-        }
-
-        fmt1 = "{name} the {rank}"
-        if 'ShowPlayerID' in self.namespace.options: #TODO add to flags docs
-            fmt1 += '  player_id:{player_id}'
-
-
-        # TODO draw hp in green/yellow/red depending on health
-        fmt2 = "HP:{hp}({hp_max})  Ammo:{ammo}  Score:{yourscore}"
-
-        line1 = fmt1.format(**fmta)
-        line2 = fmt2.format(**fmta)
+        line1 = fmt1.format(**vars())
+        line2 = fmt2.format(**vars())
 
         self.infobar.addstr(0,0,line1)
         self.infobar.addstr(1,0,line2)
-
-        self.infobar.noutrefresh()
-
-    def display_character(self, object, history=False):
-        display_chr = None
-        # Default colour
-        colour = curses.color_pair(0)
-
-        obj, attr = object
-
-        display_chr = {
-            constants.OBJ_WALL: '#',
-            constants.OBJ_PLAYER: '@',
-            constants.OBJ_EMPTY: '.',
-            constants.OBJ_HORIZONTAL_WALL: '-',
-            constants.OBJ_VERTICAL_WALL: '|',
-            constants.OBJ_CORNER_WALL: '+',
-            constants.OBJ_BULLET: ':',
-            constants.OBJ_EXPLOSION: '*',
-            constants.OBJ_MINE: ';',
-            constants.OBJ_SLIME_BULLET: '$',
-            constants.OBJ_SLIME: '$',
-            constants.OBJ_LAVA: '~'}.get(obj,'?')
-
-        if obj == constants.OBJ_PLAYER:
-            direction = attr['direction']
-            # The colour of a player generally is either
-            # enemy, ally, or self
-            me = self.network.find_me()[1]
-
-            if attr['player_id'] == self.network.player_id:
-                # Colour green for self
-                colour = curses.color_pair(1)# | curses.A_REVERSE
-            elif attr['team'] == me[1]['team']:
-                colour = curses.color_pair(4)
-                # Yellow for ally
-            else:
-                # Red for neither ally nor self ie. enemy
-                colour = curses.color_pair(2)
-
-            if direction == constants.RIGHT:
-                display_chr = '>'
-            elif direction == constants.LEFT:
-                display_chr = '<'
-            elif direction == constants.UP:
-                display_chr = '^'
-            elif direction == constants.DOWN:
-                display_chr = 'v'
-        elif obj == constants.OBJ_BULLET or obj == constants.OBJ_SLIME_BULLET:
-            owner = attr['owner']
-            if owner == self.network.player_id:
-                colour = curses.color_pair(1)
-            else:
-                colour = curses.color_pair(2)
-        elif obj == constants.OBJ_EXPLOSION:
-            colour = curses.color_pair(4)
-        elif obj == constants.OBJ_MINE:
-            colour = curses.color_pair(4) # yellow
-            if attr['size'] == 1:
-                display_chr = ';'
-            elif attr['size'] == 2:
-                display_chr = 'g'
-        elif obj == constants.OBJ_SLIME:
-            colour = curses.color_pair(1) | curses.A_BOLD
-        elif obj == constants.OBJ_LAVA:
-            colour = curses.color_pair(4) | curses.A_BOLD
-
-        assert display_chr is not None
-
-        if attr.get('historical', False):
-            # Grey
-            colour = curses.color_pair(3)
-
-        if self.data.get('hallu', False):
-            colour = curses.color_pair(random.randint(1,8))
-
-        return display_chr, colour
 
     def input(self, stdscr, c):
         cmds = {
@@ -556,7 +473,7 @@ class GameScene(Scene):
 
 class _MultiHackClientNetworkPacketHandler(object):
     def _event_packet(self, packet):
-        event = pickle.loads(packet.event)
+        event = utility.quick_unpickle(packet.event)
         with self._lock:
             self._events.append(event)
 
@@ -565,7 +482,7 @@ class _MultiHackClientNetworkPacketHandler(object):
     def _disconnect_packet(self, packet):
         raise ServerDisconnect
     def _picklediff_packet(self, packet):
-        key = pickle.loads(packet.key)
+        key = utility.quick_unpickle(packet.key)
         self._store.feed(key, packet.diff)
 
 class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
@@ -603,14 +520,14 @@ class MultiHackClientNetwork(_MultiHackClientNetworkPacketHandler):
         for key, diff in self._remote_store.get_changes():
             p = packet_pb2.Packet()
             p.payload_type = constants.Payload.picklediff
-            p.key = pickle.dumps(key, pickle.HIGHEST_PROTOCOL)
+            p.key = utility.quick_pickle(key)
             p.diff = diff
             self._send_packets(p)
 
     def remote_event(self, event):
         p = packet_pb2.Packet()
         p.payload_type = constants.Payload.event
-        p.event = pickle.dumps(event, -1)
+        p.event = utility.quick_pickle(event)
         self._send_packets(p)
 
     def start_thread(self):
