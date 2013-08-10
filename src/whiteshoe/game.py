@@ -1104,20 +1104,25 @@ class _MultiHackEventHandler(object):
 
             new_location_entities = ()
 
-        for entity in new_location_entities:
-            entity_id, entity_type = entity
-            type_data = self.entity_data.get(entity_type)
-            if type_data is None:
-                # Assume no flags as some sensible default.
-                # TODO whine in the server log about the unknown entity.
-                flags = ()
-            else:
-                flags = type_data.get('flags',())
-            if "walkable" not in flags:
-                # Special case walking into walls and closed doors.
-                #print("bump")
-                move_happening = False
-                break #TODO implement bumping into things
+        if 'god' not in player_flags:
+            for entity in new_location_entities:
+                entity_id, entity_type = entity
+                type_data = self.entity_data.get(entity_type)
+                if type_data is None:
+                    # Assume no flags as some sensible default.
+                    # TODO whine in the server log about the unknown entity.
+                    flags = ()
+                else:
+                    flags = type_data.get('flags',())
+                if "walkable" not in flags:
+                    # Special case walking into walls and closed doors.
+                    #print("bump")
+                    move_happening = False
+                    break #TODO implement bumping into things
+        else:
+            # So if the player has the god flag, he moves through all things
+            # regardless
+            move_happening = True
 
         if move_happening:
             current_location_entities.remove(player_entity)
@@ -1153,6 +1158,7 @@ class _MultiHackEventHandler(object):
             '#spawn': self._command_hashspawn,
             '#teleport': self._command_hashteleport,
             '#look': self._command_hashlook,
+            '#playerflag': self._command_hashflag,
         }
 
         # TODO complain at the client for a bad command
@@ -1295,6 +1301,38 @@ class _MultiHackCommandHandler(object):
             entity_id, entity_type = entity
             msg = " - #{entity_id} \"{entity_type}\"".format(**vars())
             self._message_player(player_id, msg)
+
+    def _command_hashplayerflag(self, player_id, flag, state='toggle'):
+
+        player_state = self.players[player_id]
+        player_flags = player_state['flags']
+
+        if state.lower() in ('toggle',):
+            action = 'toggle'
+        elif state.lower() in ('on','yes','true','set'):
+            action = 'set'
+        elif state.lower() in ('off','no','false','clear'):
+            action = 'clear'
+        else:
+            action = 'unknown'
+
+        if action == 'toggle':
+            if flag in player_flags:
+                player_flags.remove(flag)
+            else:
+                player_flags.add(flag)
+
+        elif action == 'set':
+            player_flags.add(flag)
+        elif action == 'clear':
+            player_flags.discard(flag)
+        fmt = "{name} ID {id} {action} {flag}: [{player_flags_str}]"
+
+        name = player_state['name']
+        id = player_id
+        player_flags_str = ','.join(player_flags)
+
+        self._message_player(player_id, fmt.format(**vars()))
 
 class _MultiHackUtility(object):
     def _message_player(self, player_id, message):
