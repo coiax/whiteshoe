@@ -11,13 +11,9 @@ logger = logging.getLogger(__name__)
 
 import utility
 import constants
-import packet_pb2
+import packet_pb2 as wire
 import maps
 import vision
-
-# use of packet_pb2 is "deprecated" TODO find ways of detecting this.
-# probably grep. TODO just switch everything eventually.
-wire = packet_pb2
 
 modes = {}
 
@@ -86,7 +82,7 @@ class BaseGame(object):
         # Returns a list of 0 or more packets in response
 
         if player_id not in self.players:
-            p = packet_pb2.Packet()
+            p = wire.Packet()
             p.packet_id = get_id('packet')
             p.payload_type = constants.ERROR
             p.error_type = constants.ERROR_NOT_IN_GAME
@@ -195,7 +191,7 @@ class BaseGame(object):
         self.player_attr[player_id]['name'] = attr['name'] = name
         self.player_attr[player_id]['team'] = attr['team'] = team
 
-        join_packet = packet_pb2.Packet()
+        join_packet = wire.Packet()
         join_packet.packet_id = utility.get_id('packet')
         join_packet.payload_type = constants.GAME_STATUS
 
@@ -217,7 +213,7 @@ class BaseGame(object):
         for other_id in self.players:
             new_packets = []
             for i in range(2):
-                p = packet_pb2.Packet()
+                p = wire.Packet()
                 p.packet_id = utility.get_id('packet')
                 p.payload_type = constants.GAME_STATUS
                 p.game_id = self.id
@@ -350,7 +346,7 @@ class BaseGame(object):
         packets = []
 
         def gen_packet():
-            packet = packet_pb2.Packet()
+            packet = wire.Packet()
             packet.packet_id = utility.get_id('packet')
             packet.payload_type = constants.VISION_UPDATE
             packet.game_id = self.id
@@ -664,7 +660,7 @@ class BaseGame(object):
             player_id = event[0]
 
             if p is None:
-                p = packet_pb2.Packet()
+                p = wire.Packet()
                 p.packet_id = utility.get_id('packet')
                 p.payload_type = constants.GAME_STATUS
                 p.game_id = self.id
@@ -682,7 +678,7 @@ class BaseGame(object):
             # clear the update scores flag
             self._update_scores = False
 
-            p = packet_pb2.Packet()
+            p = wire.Packet()
             p.packet_id = utility.get_id('packet')
             p.game_id = self.id
             p.payload_type = constants.KEYVALUE
@@ -1026,7 +1022,7 @@ def network_pack_object(coord, object):
     if obj_attr == {}:
         attribute = None
     else:
-        attribute = packet_pb2.Packet.Attribute()
+        attribute = wire.Packet.Attribute()
         for key in constants.ATTRIBUTE_KEYS:
             if key in obj_attr:
                 value = obj_attr[key]
@@ -1037,7 +1033,7 @@ def network_pack_object(coord, object):
     return x,y,obj_type,attribute
 
 def pack_attribute(obj_attr):
-    attribute = packet_pb2.Packet.Attribute()
+    attribute = wire.Packet.Attribute()
     for key in constants.ATTRIBUTE_KEYS:
         if key in obj_attr:
             value = obj_attr[key]
