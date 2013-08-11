@@ -15,6 +15,7 @@ import constants
 import packet_pb2 as wire
 import maps
 import vision
+import level
 
 modes = {}
 
@@ -84,6 +85,7 @@ class _MultiHackEventHandler(object):
             player_flags.add("lost")
             # This is most of the time, indicating a bug, but occasionally
             # the sign of weird debugging.
+            # TODO in normal modes, we'd probably crash.
             return
 
         diff = constants.DIFFS[direction]
@@ -106,17 +108,14 @@ class _MultiHackEventHandler(object):
 
         if 'god' not in player_flags:
             for entity in new_location_entities:
-                entity_id, entity_type = entity
-                type_data = self.entity_data.get(entity_type)
-                if type_data is None:
-                    # Assume no flags as some sensible default.
-                    # TODO whine in the server log about the unknown entity.
-                    flags = ()
-                else:
-                    flags = type_data.get('flags',())
+                entity_state = utility.get_entity_state(self.entity_data,
+                                                        self.entity_state,
+                                                        entity)
+                flags = entity_state['flags']
+
                 if "walkable" not in flags:
                     # Special case walking into walls and closed doors.
-                    #print("bump")
+                    self._message_player(player_id, "Bump.")
                     move_happening = False
                     break #TODO implement bumping into things
         else:
@@ -153,14 +152,13 @@ class _MultiHackEventHandler(object):
             'status': self._command_status,
             'noop': lambda *args: None,
             'fail': self._command_fail,
-            'savestate': self._command_savestate,
-            'loadstate': self._command_loadstate,
             '#player': self._command_hashplayer,
             '#remove': self._command_hashremove,
             '#spawn': self._command_hashspawn,
             '#teleport': self._command_hashteleport,
             '#look': self._command_hashlook,
             '#playerflag': self._command_hashplayerflag,
+            '#loadlevel': self._command_hashloadlevel,
         }
 
         # TODO complain at the client for a bad command
@@ -188,14 +186,6 @@ class _MultiHackCommandHandler(object):
         fmt = "{} levels, with {} entities."
 
         self._message_player(player_id, fmt.format(num_levels, num_entities))
-    def _command_savestate(self, player_id):
-        state = self.save_state()
-        with open('game.state', 'wb') as f:
-            pickle.dump(state, f)
-    def _command_loadstate(self, player_id):
-        with open('game.state','rb') as f:
-            state = pickle.load(f)
-        self.load_state(state)
 
     def _command_hashplayer(self, commanding_player_id):
         for player_id in sorted(self.players):
@@ -215,6 +205,11 @@ class _MultiHackCommandHandler(object):
         found = False
         for world_name, world in self.universe.items():
             for coord, entities in world.items():
+                if not utility.coordinate_check(coord):
+                    # Skip non coordinate in world data, probably caching
+                    # and level settings.
+                    continue
+
                 for entity in entities:
                     entity_id, entity_type = entity
                     if entity_id in doomed_ids:
@@ -338,6 +333,16 @@ class _MultiHackCommandHandler(object):
 
         self._message_player(player_id, fmt.format(**vars()))
 
+    def _command_hashloadlevel(self, player_id, level_name):
+        new_level, additional_entity_state = level.load_by_name(level_name)
+
+        self.universe[level_name] = new_level
+        self.entity_state.update(additional_entity_state)
+
+        fmt = "Level {} loaded successfully."
+        self._message_player(player_id, fmt.format(level_name))
+
+
 class _MultiHackUtility(object):
     def _message_player(self, player_id, message):
         event = ("message", message)
@@ -354,6 +359,8 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
         self.name = name
         self.id = id if id is not None else utility.get_id('game')
 
+        # TODO this data can probably be stored outside the code
+        # it's getting a wee bit weird to format
         self.entity_data = {
             'human': {'symbol': '@', 'colour': 'white'},
             'wall': {'symbol': '#', 'colour': 'white'},
@@ -365,10 +372,14 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
                        'flags':('walkable','bold')},
             'tree': {'symbol':'#','colour':'green'},
             'stair': {'symbol':'X','colour':'white',
-                      'entity_flag_set':{'up': {'symbol':'<', 'flags':()},
-                                         'down': {'symbol':'>', 'flags':()}},
-                      'flags': ('invalid',)
-                     }
+                      'entity_flag_set':
+                        {
+                        'up': {'symbol':'<', 'flags':('!invalid',)},
+                        'down': {'symbol':'>', 'flags':('!invalid',)}
+                        },
+                      'flags': ('invalid','walkable')
+                     },
+            'solidrock': {'symbol': ' ', 'colour':'black'},
         }
 
         self.players = {}

@@ -153,6 +153,8 @@ def cursify(character, colour, flags=()):
         attr |= curses.A_BOLD
     if "underline" in flags:
         attr |= curses.A_UNDERLINE
+    if "standout" in flags:
+        attr |= curses.A_STANDOUT
 
     return character, attr
 
@@ -256,9 +258,13 @@ class GameScene(Scene):
 
 
         for i, message in enumerate(self._messages):
-            chr, attr = cursify(message, "purple")
-
-            self.viewport.addstr(i + 1,0, chr, attr)
+            chr, attr = cursify(message, "purple", ('bold','standout'))
+            try:
+                self.viewport.addstr(i + 1,0, chr, attr)
+            except curses.error:
+                # probably too many messages, that's probably why
+                # TODO get a better message system than this simple one.
+                pass
 
 
         # Move cursor to your player.
@@ -285,18 +291,25 @@ class GameScene(Scene):
 
     def draw_viewport(self):
         location = self.network.store['player_location']
-        world, x, y, z = location
+        player_world, player_x, player_y, player_z = location
 
         known_universe = self.network.store.get('known_universe')
 
         if known_universe is None:
-            # Might complain about this later. Right now, wait a bit.
+            # TODO Might complain about this later. Right now, wait a bit.
             return
 
-        map_data = self.network.store['known_universe'][world]
+        map_data = self.network.store['known_universe'][player_world]
 
-        #self.viewport.clear()
+        # This may increase CPU usage, but ensures that the display is
+        # correct.
+        self.viewport.erase()
+
         for coord, entities in map_data.items():
+            x, y, z = coord
+            # Only draw coordinates that the player shares a z coord with.
+            if z != player_z:
+                continue
             self.draw_tile(coord, entities)
 
     def draw_tile(self, coord, entities):
@@ -317,8 +330,8 @@ class GameScene(Scene):
         # Default settings. A green '?' indicates an unknown character.
 
         character = '?'
-        flags = ('bold','underline')
         colour = "green"
+        flags = ()
 
         if not entities:
             character = '?'
@@ -328,32 +341,19 @@ class GameScene(Scene):
             # TODO for now, we'll draw the last one in the list.
             entity = entities[-1]
 
-            id, type = entity
+            entity_data = self.network.store['entity_data']
+            entity_states = self.network.store['entity_state']
 
-            entity_state = self.network.store['entity_state'].get(id, {})
-            type_data = self.network.store['entity_data'].get(type)
-
-            if type_data is not None:
-                entity_flags = entity_state.get('flags',())
-                entity_flag_set = type_data.get('entity_flag_set', {})
-
-                # Symbol and colour are required, flags is optional,
-                # defaulting to the empty set/tuple.
-                character = type_data['symbol']
-                colour = type_data['colour']
-                flags = type_data.get('flags', ())
+            entity_state = utility.get_entity_state(entity_data, entity_states,
+                                                    entity)
 
 
-                for flag in entity_flag_set:
-                    if flag in entity_flags:
-                        triggered_configuration = entity_flags[flag]
-
-                        if 'symbol' in trigger_configuration:
-                            character = trigger_configuration['symbol']
-                        if 'colour' in trigger_configuration:
-                            colour = trigger_configuration['colour']
-                        if 'flags' in trigger_configuration:
-                            flags = trigger_configuration['flags']
+            if 'symbol' in entity_state:
+                character = entity_state['symbol']
+            if 'colour' in entity_state:
+                colour = entity_state['colour']
+            if 'flags' in entity_state:
+                flags = entity_state['flags']
 
         character, attr = cursify(character, colour, flags)
         try:

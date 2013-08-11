@@ -11,6 +11,7 @@ import re
 import struct
 import marshal
 import operator
+import threading
 try:
     import cPickle as pickle
 except ImportError as __e:
@@ -21,23 +22,42 @@ except ImportError as __e:
 
 import bsdiff4
 
-import constants
-
 logger = logging.getLogger(__name__)
 
 class IDCounter(object):
     def __init__(self):
+        self._start = 0
+        self._lock = threading.Lock()
         self._counters = {}
+        self._released = {}
 
     def get_id(self, family):
-        if family not in self._counters:
-            self._counters[family] = 0
+        with self._lock:
+            try:
+                if self._released[family]:
+                    new_id = self._released[family].pop()
+                else:
+                    new_id = self._counters[family]
+                    self._counters[family] = new_id + 1
+                return new_id
+            except KeyError:
+                self._released[family] = []
+                self._counters[family] = self._start + 1
+                return self._start
 
-        new_id = self._counters[family]
-        self._counters[family] = (new_id + 1) % 2**31
-        return new_id
+    def release_id(self, family, id):
+        with self._lock:
+            assert id < self._counters[family]
+            try:
+                assert id not in self._released[family]
+                self._released[family].append(id)
+            except KeyError:
+                self._released[family] = [id]
 
-get_id = IDCounter().get_id
+_id_counter = IDCounter()
+
+get_id = _id_counter.get_id
+release_id = _id_counter.release_id
 
 class Stopwatch(object):
     def __init__(self, start=False):
@@ -309,20 +329,6 @@ class CellularAutomaton(collections.MutableMapping):
             ticks += 1
             live = self.apply(rules, boundary)
 
-def ca_world_to_world(ca_world,inverse=False):
-    world = {}
-    for coord in ca_world:
-        is_wall = bool(ca_world[coord])
-        if inverse:
-            is_wall = not is_wall
-
-        if is_wall:
-            world[coord] = [(constants.OBJ_WALL, {})]
-        else:
-            world[coord] = [(constants.OBJ_EMPTY, {})]
-
-    return world
-
 _stream_fmt = '>L'
 
 def stream_wrap(data):
@@ -577,3 +583,66 @@ def perimeter(coords):
             perimeter.append(coord)
     
     return perimeter
+
+def coordinate_check(potentional_coord):
+    # Screens for a 3 length iterable containing only integers.
+    try:
+        x,y,z = key
+        if not (type(x) == type(y) == type(z) == int):
+            raise ValueError
+    except ValueError, TypeError:
+        # Non coordinate key, it's probably the level settings
+        return False
+    else:
+        return True
+
+# It does occur to me that this utility module is becoming VERY large.
+
+def get_entity_state(entity_data, entity_states, entity):
+    entity_id, entity_type = entity
+
+    entity_datum = entity_data.get(entity_type, {})
+    entity_state = entity_states.get(entity_id, {})
+    entity_flag_set = entity_datum.get('entity_flag_set', {})
+
+    actual_state = {}
+    # So the datum is the base state, like
+    # grid bug is purple. grid bug is an 'x' symbol.
+    actual_state.update(entity_datum)
+
+    # Then the entity_state is the specific stuff to that entity,
+    # like, this entity is 'slowed', or this entity has been permamantly
+    # afflicted with a case of the gribblies.
+    actual_state.update(entity_state)
+
+    # Then calculate flags, to work out if any entity_flag_set stuff triggers.
+    flags = combine_flags(entity_datum.get('flags', ()),
+                          entity_state.get('flags', ()))
+
+    for flag in tuple(flags):
+        if flag in entity_flag_set:
+            actual_state.update(entity_flag_set[flag])
+
+            flags = combine_flags(flags, entity_flag_set[flag].get('flags',()))
+
+    actual_state['flags'] = flags
+    return actual_state
+
+def combine_flags(A, B):
+    A = set(A)
+    B = set(B)
+    result = set()
+
+    for flag in A:
+        # Skip not-flags. They don't persist and nullify.
+        if flag[0] != '!':
+            result.add(flag)
+
+    for flag in B:
+        # If there's a '!flag' in B, then the result WILL NOT have 'flag'.
+        if flag[0] == '!':
+            result.discard(flag[1:])
+        else:
+            result.add(flag)
+
+    return tuple(result)
