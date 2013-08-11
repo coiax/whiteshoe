@@ -571,17 +571,17 @@ def perimeter(coords):
     sorted_coords = list(sorted(coords,key=operator.itemgetter(1,0)))
     topleft = sorted_coords[0]
     bottomright = sorted_coords[-1]
-    
+
     # Then the perimeter is all coordinates that share an X or a Y with
     # either the topleft or the bottomright.
     x1, y1 = topleft
     x2, y2 = bottomright
-    
+
     perimeter = []
     for coord in sorted_coords:
         if coord[0] in (x1,x2) or coord[1] in (y1,y2):
             perimeter.append(coord)
-    
+
     return perimeter
 
 def coordinate_check(potentional_coord):
