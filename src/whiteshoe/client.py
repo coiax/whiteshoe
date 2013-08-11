@@ -375,8 +375,8 @@ class GameScene(Scene):
         fmt1 = '{player_name} the Debugling'
         fmt2 = 'DL:{world}  Loc:{x},{y},{z}'
 
-        line1 = fmt1.format(**vars())
-        line2 = fmt2.format(**vars())
+        line1 = fmt1.format(player_name=player_name)
+        line2 = fmt2.format(world=world,x=x,y=y,z=z)
 
         self.infobar.addstr(0,0,line1)
         self.infobar.addstr(1,0,line2)

@@ -17,7 +17,7 @@ try:
 except ImportError as __e:
     __fmt = "Failure to import cPickle, using slower pickle module: {}"
     logger.warning(__fmt.format(__e))
-    
+
     import pickle
 
 import bsdiff4
@@ -498,7 +498,7 @@ class nesty(object):
 
         fmt = "<{name} prefix={prefix} keys={keys}>"
 
-        return fmt.format(**vars())
+        return fmt.format(name=name,prefix=prefix,keys=keys)
 
     def __getitem__(self, key):
         return self._dict[self._prefix + (key,)]

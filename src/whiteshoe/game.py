@@ -193,7 +193,8 @@ class _MultiHackCommandHandler(object):
             location = self.players[player_id]['location']
             flags = ','.join(self.players[player_id]['flags'])
             fmt = "{name} (ID {player_id}) [{flags}] at {location}"
-            msg = fmt.format(**vars())
+            msg = fmt.format(name=name,player_id=player_id,flags=flags,
+                             location=location)
             self._message_player(commanding_player_id, msg)
 
     def _command_hashremove(self, player_id, *args):
@@ -220,7 +221,7 @@ class _MultiHackCommandHandler(object):
                         id = entity_id
                         loc = (world_name,) + coord
                         fmt = "Entity #{id} \"{entity_type}\" {loc} removed."
-                        msg = fmt.format(**vars())
+                        msg = fmt.format(id=id,entity_type=entity_type,loc=loc)
                         self._message_player(player_id, msg)
 
         for doomed_id in doomed_ids:
@@ -241,7 +242,8 @@ class _MultiHackCommandHandler(object):
         entity_list.append((new_id, entity_type))
 
         fmt = "Entity #{new_id} \"{entity_type}\" spawned at {loc}"
-        self._message_player(player_id, fmt.format(**vars()))
+        msg = fmt.format(new_id=new_id,entity_type=entity_type,loc=loc)
+        self._message_player(player_id, msg)
 
     def _command_hashteleport(self, player_id, world, x, y, z):
         player_state = self.players[player_id]
@@ -265,7 +267,7 @@ class _MultiHackCommandHandler(object):
                 self.universe[world][x,y,z].append(entity)
                 player_state['location'] = loc = (world,x,y,z)
                 fmt = "Moved player entity #{entity_id} to {loc}"
-                msg = fmt.format(**vars())
+                msg = fmt.format(entity_id=entity_id,loc=loc)
                 break
         else:
             # No entity found, so we'll just MAKE A NEW ONE.
@@ -278,7 +280,7 @@ class _MultiHackCommandHandler(object):
             player_state['entity_id'] = new_id
             player_state['flags'].discard('lost')
             fmt = "No entity found, new player entity #{new_id} at {loc}"
-            msg = fmt.format(**vars())
+            msg = fmt.format(new_id=new_id,loc=loc)
 
         player_state['remote_store']['player_location'] = loc
         self._message_player(player_id, msg)
@@ -298,7 +300,8 @@ class _MultiHackCommandHandler(object):
         self._message_player(player_id, "Entities at {}:".format(loc))
         for entity in self.universe[world][x,y,z]:
             entity_id, entity_type = entity
-            msg = " - #{entity_id} \"{entity_type}\"".format(**vars())
+            fmt = " - #{entity_id} \"{entity_type}\""
+            msg = fmt.format(entity_id=entity_id,entity_type=entity_type)
             self._message_player(player_id, msg)
 
     def _command_hashplayerflag(self, player_id, flag, state='toggle'):
@@ -331,7 +334,10 @@ class _MultiHackCommandHandler(object):
         id = player_id
         player_flags_str = ','.join(player_flags)
 
-        self._message_player(player_id, fmt.format(**vars()))
+        msg = fmt.format(name=name,id=id,action=action,flag=flag,
+                         player_flags_str=player_flags_str)
+
+        self._message_player(player_id, msg)
 
     def _command_hashloadlevel(self, player_id, level_name):
         new_level, additional_entity_state = level.load_by_name(level_name)
