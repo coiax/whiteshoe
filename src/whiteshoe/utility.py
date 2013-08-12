@@ -208,7 +208,7 @@ def border(coords):
     for coord in coords:
         border_coords.extend(neighbourhood(coord))
     border_coords = set(border_coords) - set(coords)
-    return list(perimeter(border_coords))
+    return list(border_coords)
 
 def cardinal_neighbourhood(x_y):
     x, y = x_y
@@ -218,6 +218,17 @@ def cardinal_neighbourhood(x_y):
         (x + 1, y),
         (x - 1, y),
     ]
+
+def wall_direction(wall_coords, chosen_wall):
+    # returns either a horizontal -
+    # or vertical |
+    # indicator.
+
+    x,y = chosen_wall
+    if (x - 1, y) in wall_coords or (x + 1, y) in wall_coords:
+        return '-'
+    else:
+        return '|'
 
 def bytes_to_human(bytes):
     # 0 for bytes, 1 for k, 2 for meg, 3 for gig
@@ -596,7 +607,25 @@ def coordinate_check(potentional_coord):
     else:
         return True
 
-# It does occur to me that this utility module is becoming VERY large.
+def corners(coords):
+    # Assume it's some sort of 2D rectangular structure.
+    sorted_coords = sorted(coords,key=operator.itemgetter(1,0))
+
+    # (x1, y1)---(x2, y1)
+    #    |          |
+    # (x1, y2)---(x2, y2)
+
+    x1, y1 = topleft = sorted_coords[0]
+    x2, y2 = bottomright = sorted_coords[-1]
+
+    topright = x2, y1
+    bottomleft = x1, y2
+
+    return set([topleft, topright, bottomleft, bottomright])
+
+    # Then the topright should 
+
+# FIXME It does occur to me that this utility module is becoming VERY large.
 
 def get_entity_state(entity_data, entity_states, entity):
     entity_id, entity_type = entity
@@ -646,3 +675,69 @@ def combine_flags(A, B):
             result.add(flag)
 
     return tuple(result)
+
+
+def generate_path(x_length, y_length, start,
+                  forbidden=(), whitelist=None, order='xy'):
+
+    assert len(start) == 2
+    # The below is always true, but will complain if forbidden cannot
+    # __contains__ things.
+    assert (None in forbidden) or (None not in forbidden)
+    assert whitelist is None or list(whitelist)
+    assert order in ('xy','yx')
+
+    path = []
+    path.append(start)
+
+    current = start
+
+    for letter in order:
+        if letter == 'x':
+            negative_x_length = x_length < 0
+            for i in range(abs(x_length)):
+                cx, cy = current
+
+                nx = cx + (-1 if negative_x_length else 1)
+                ny = cy
+
+                current = nx, ny
+                path.append(current)
+
+        elif letter == 'y':
+            negative_y_length = y_length < 0
+            for i in range(abs(y_length)):
+                cx, cy = current
+
+                nx = cx
+                ny = cy + (-1 if negative_y_length else 1)
+
+                current = nx, ny
+                path.append(current)
+
+        if (set(path) & set(forbidden)):
+            return False
+        if whitelist is not None and set(path) - set(whitelist):
+            return False
+    return path
+
+def try_many_paths(X, Y, start_coord, whitelist=None, forbidden=(),
+                   our_random=random):
+    r = our_random
+
+    path = set()
+    x_list = list(range(-X, X))
+    r.shuffle(x_list)
+    y_list = list(range(-Y, Y))
+    r.shuffle(y_list)
+
+    random_order = ['xy','yx']
+    r.shuffle(random_order)
+
+    for x in x_list:
+        for y in y_list:
+            for order in random_order:
+                out = generate_path(x,y,start_coord,
+                                    forbidden=forbidden, whitelist=whitelist)
+                if out:
+                    yield out

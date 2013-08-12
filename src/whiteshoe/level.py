@@ -3,9 +3,11 @@ import os.path
 import operator
 import re
 import logging
+import random
 logger = logging.getLogger(__name__)
 
 import utility
+import maps
 
 def load_by_name(level_name):
     level_filename = level_name + ".level"
@@ -103,3 +105,46 @@ def load_from_string(level_string):
         entities.append((entity_id, entity_type))
 
     return level, entity_state
+
+def map_to_level(levelmap, r=random):
+    # Okay, make the doorways have a 50/50 chance of having a door
+    # or having just empty floor.
+    level = Level()
+    entity_state = {}
+
+    for coord in levelmap:
+        if levelmap[coord] == 'doorway':
+            #levelmap[coord] = 'door' if r.random() < 0.5 else 'floor'
+            levelmap[coord] = 'door'
+
+    for coord, entity_type in levelmap.items():
+        entity_id = utility.get_id('entity')
+
+        if entity_type == 'horizwall':
+            entity_type = 'wall'
+            entity_state[entity_id] = {'flags':('horizontal',)}
+        elif entity_type == 'vertiwall':
+            entity_type = 'wall'
+            entity_state[entity_id] = {'flags':('vertical',)}
+        elif entity_type == 'roughwall':
+            entity_type = 'wall'
+            entity_state[entity_id] = {'flags':('rough',)}
+
+        level[coord + (0,)] = [(entity_id, entity_type)]
+
+
+    return level, entity_state
+
+def dungeon_alpha(r=random):
+    num_rooms = r.randint(6,10)
+    map = maps.dungeon_alpha(our_random=r,num_rooms=num_rooms)
+
+    level, entity_state = map_to_level(map)
+
+    return level, entity_state
+
+class Level(dict):
+    def __repr__(self):
+        return object.__repr__(self)
+    def __str__(self):
+        return maps._print_level(self)

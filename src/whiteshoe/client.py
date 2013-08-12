@@ -145,6 +145,8 @@ def cursify(character, colour, flags=()):
         colour_pair = 2
     elif colour == "yellow":
         colour_pair = 12
+    elif colour == "brownish":
+        colour_pair = 4
     else:
         colour_pair = 1 # TODO complain
 
@@ -216,8 +218,9 @@ class GameScene(Scene):
 
         INFOBAR_HEIGHT = 2
 
-        viewport_topleft = (0,0)
-        viewport_linescols = (max_y - INFOBAR_HEIGHT, max_x)
+        viewport_topleft = (1,1)
+        viewport_linescols = (max_y - INFOBAR_HEIGHT - viewport_topleft[1], 
+                              max_x - viewport_topleft[0])
 
         viewport = viewport_linescols + viewport_topleft
 
@@ -226,8 +229,14 @@ class GameScene(Scene):
 
         infobar = infobar_linescols + infobar_topleft
 
+        messagebar_topleft = (0,0)
+        messagebar_linescols = (1, max_x)
+
+        messagebar = messagebar_linescols + messagebar_topleft
+
         self.viewport = stdscr.subwin(*viewport)
         self.infobar = stdscr.subwin(*infobar)
+        self.messagebar = stdscr.subwin(*messagebar)
 
     def tick(self, stdscr):
         self.network.update()
@@ -256,11 +265,17 @@ class GameScene(Scene):
             else:
                 self._message_timer.stop()
 
+       
+        self.messagebar.erase()
+        if self._messages:
+            message = self._messages[0]
 
-        for i, message in enumerate(self._messages):
             chr, attr = cursify(message, "purple", ('bold','standout'))
             try:
-                self.viewport.addstr(i + 1,0, chr, attr)
+                self.messagebar.addstr(0,0,chr, attr)
+                time_left = 10 - self._message_timer.elapsed_seconds
+                chr, attr = cursify(" ({:.2f})".format(time_left), "white")
+                self.messagebar.addstr(chr, attr)
             except curses.error:
                 # probably too many messages, that's probably why
                 # TODO get a better message system than this simple one.
@@ -282,7 +297,10 @@ class GameScene(Scene):
                 curses.curs_set(0)
 
         # Call nout refresh on all windows.
+        self.messagebar.noutrefresh()
         self.infobar.noutrefresh()
+
+        # Viewport needs to be last, so the cursor is on the player.
         self.viewport.noutrefresh()
 
 

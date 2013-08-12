@@ -369,7 +369,14 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
         # it's getting a wee bit weird to format
         self.entity_data = {
             'human': {'symbol': '@', 'colour': 'white'},
-            'wall': {'symbol': '#', 'colour': 'white'},
+            'wall': {'symbol': '?', 'colour': 'white',
+                      'entity_flag_set':
+                       {
+                           'horizontal': {'symbol':'-'},
+                           'vertical': {'symbol':'|'},
+                           'rough': {'symbol':'#'},
+                       
+                       }},
             'floor': {'symbol': '.', 'colour': 'white', 'flags':('walkable',)},
             'pool': {'symbol': '}', 'colour': 'blue'},
             'lava': {'symbol': '}', 'colour': 'red'},
@@ -386,6 +393,7 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
                       'flags': ('invalid','walkable')
                      },
             'solidrock': {'symbol': ' ', 'colour':'black'},
+            'door': {'symbol': '+', 'colour':'brownish','flags':('walkable',)},
         }
 
         self.players = {}
@@ -400,17 +408,13 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
         self._empties = [] # not permament, just used for the hacky current
                            # setup
 
-        for x in range(80):
-            for y in range(24):
-                world[x,y,0] = entities = []
-                entity_id = utility.get_id('entity')
-                if self.random.random() < 0.35:
-                    entity = (entity_id, 'wall')
-                else:
-                    entity = (entity_id, 'floor')
+        # ENGAGE DUNGEON ALPHA
+        world, entity_state = level.dungeon_alpha(r=self.random)
+        self.entity_state.update(entity_state)
 
-                    self._empties.append((x,y))
-                entities.append(entity)
+        for coord, entities in world.items():
+            if all(entity[1] == "floor" for entity in entities):
+                self._empties.append(coord)
 
         self.random.shuffle(self._empties)
 
@@ -443,14 +447,14 @@ class MultiHack(_MultiHackEventHandler, _MultiHackCommandHandler,
         player_state['name'] = "Bob Newbie"
         player_state['flags'] = set()
 
-        entity_x, entity_y = self._empties.pop()
+        entity_x, entity_y, entity_z = self._empties.pop()
 
-        player_state['location'] = ('level1', entity_x, entity_y, 0)
+        player_state['location'] = ('level1', entity_x, entity_y, entity_z)
         player_state['entity_id'] = entity_id = utility.get_id('entity')
 
         entity = (entity_id, 'human')
 
-        self.universe['level1'][entity_x, entity_y, 0].append(entity)
+        self.universe['level1'][entity_x, entity_y, entity_z].append(entity)
 
         # TODO later, we'll give them incomplete information. Right now
         # GET SOMETHING WORKING

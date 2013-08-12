@@ -114,8 +114,21 @@ def depth_first(X=80, Y=24, seed=0):
     return world
 
 @generator
-def dungeon_alpha(X=69,Y=16, seed=0, num_rooms=6):
-    r = random.Random(seed)
+def dungeon_alpha(X=69,Y=16, seed=None, our_random=None, num_rooms=6):
+    r = None
+    if our_random is not None:
+        try:
+            our_random.random
+            our_random.randint
+        except AttributeError:
+            pass
+        else:
+            r = our_random
+
+    if r is None:
+        r = random.Random(seed)
+
+
     MIN_SIZE = 4
     MAX_SIZE = 9
     NUM_ROOMS = num_rooms
@@ -124,7 +137,9 @@ def dungeon_alpha(X=69,Y=16, seed=0, num_rooms=6):
     level = {}
     for x in range(X):
         for y in range(Y):
-            level[x,y] = "rock"
+            level[x,y] = "solidrock"
+
+    rooms = []
 
     while rooms_generated < NUM_ROOMS:
         x_length = r.randint(MIN_SIZE, MAX_SIZE)
@@ -147,12 +162,12 @@ def dungeon_alpha(X=69,Y=16, seed=0, num_rooms=6):
         valid = True
         adjacent = False
         for coord in perimeter:
-            if level[coord] not in ("rock", "smoothwall"):
+            if level[coord] not in ("solidrock", "smoothwall"):
                 valid = False
                 break
 
         for coord in utility.border(perimeter):
-            if coord in level and level[coord] != "rock":
+            if coord in level and level[coord] != "solidrock":
                 valid = False
                 break
 
@@ -163,14 +178,86 @@ def dungeon_alpha(X=69,Y=16, seed=0, num_rooms=6):
                 level[coord] = "floor"
 
             rooms_generated += 1
+            rooms.append(coordinates)
 
-    new_level = {}
+    # Right, now we have a collection of rooms. Now to join them with
+    # coridoors... Somehow.
+    # TODO probably need some sort of pathfinding, rather than just thrashing
 
-    for coord, entity_type in list(level.items()):
-        entity_id = utility.get_id('entity')
-        new_level[coord + (0,)] = [(entity_id, entity_type)]
+    paths = set()
+
+    for room in rooms:
+        # Can't start from a corner.
+        suitable = set(room) - set(utility.corners(room))
+        suitable = list(suitable)
+        r.shuffle(suitable)
+        # We start somewhere on the perimeter.
+        # Sadly, casting to a list is required for Random.choice(L)
+
+        # Then "forbid" all the corners of all rooms.
+        # As well as the walls of this one.
+        forbidden = set()
+        endpoints = set()
+        for other_room in rooms:
+            forbidden |= set(utility.corners(other_room))
+            if other_room == room:
+                continue
+            endpoints |= set(other_room) - set(utility.perimeter(other_room))
+
+        whitelist = set(level.keys())
+
+        chosen_path = None
+        for possible_start in suitable:
+            for maybe_path in utility.try_many_paths(X, Y, possible_start,
+                                                     whitelist=whitelist,
+                                                     forbidden=forbidden,
+                                                     our_random=r):
+                # This should be true because of us only whitelisting
+                # in level coordinates. Just check, to be safe.
+                assert not (set(maybe_path) - set(level))
+
+                # got ourselves a path, check IT GOES SOMEWHERE.
+                if maybe_path[-1] in endpoints:
+                    chosen_path = maybe_path
+                    break
+                perimeter = utility.perimeter(room)
+                if len(set(perimeter) & set(maybe_path)) != 1:
+                    break
+            if chosen_path is not None:
+                break
+
+        if chosen_path is not None:
+            paths |= set(chosen_path)
+
+    for coord in paths:
+        level[coord] = "floor"
+        for room in rooms:
+            if coord in utility.perimeter(room):
+                level[coord] = "doorway"
+
+    for border_coord in set(utility.border(paths)) & set(level):
+        if level[border_coord] == 'solidrock':
+            level[border_coord] = 'roughwall'
+
+    for room in rooms:
+        perimeter = utility.perimeter(room)
+        for coord in perimeter:
+            if level[coord] == "smoothwall":
+                direction = utility.wall_direction(perimeter, coord)
+                if direction == '|':
+                    level[coord] = 'vertiwall'
+                elif direction == '-':
+                    level[coord] = 'horizwall'
+
+    new_level = LevelMap(level)
 
     return new_level
+
+class LevelMap(dict):
+    def __repr__(self):
+        return object.__repr__(self)
+    def __str__(self):
+        return _print_level(self)
 
 def world_to_string(world):
     rows = []
@@ -200,9 +287,16 @@ def world_to_string(world):
 
     return '\n'.join(rows)
 
-def print_level(level):
+def _print_level(level):
     coords = sorted(list(level),key=operator.itemgetter(1,0))
     last_y = None
+
+    out = []
+
+    def print(value='', end='\n'):
+        out.append(value)
+        out.append(end)
+
     for coord in coords:
         y = coord[1]
         if last_y is None:
@@ -211,17 +305,32 @@ def print_level(level):
             print()
 
         last_y = y
-        entity = level[coord][-1]
-        entity_id, entity_type = entity
+
+        try:
+            entity = level[coord][-1]
+            entity_id, entity_type = entity
+        except ValueError:
+            # Dealing with a levelmap, rather than a level
+            entity_type = level[coord]
+
         if entity_type == "smoothwall":
             print('x',end='')
+        elif entity_type == "horizwall":
+            print('-',end='')
+        elif entity_type == "vertiwall":
+            print('|',end='')
         elif entity_type == "roughwall":
             print('#',end='')
-        elif entity_type == "rock":
+        elif entity_type == "solidrock":
             print(' ',end='')
         elif entity_type == "floor":
             print('.',end='')
+        elif entity_type in ("doorway","door"):
+            print('+',end='')
+        else:
+            print(entity_type,end='')
     print()
+    return ''.join(out)
 
 
 def pretty_walls(world):
@@ -260,3 +369,6 @@ def pretty_walls(world):
             objects.append((constants.OBJ_CORNER_WALL, {}))
 
     return world
+
+if __name__=='__main__':
+    print(dungeon_alpha(our_random=random))
